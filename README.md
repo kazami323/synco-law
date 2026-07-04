@@ -42,7 +42,7 @@ uvicorn app.main:app --reload
 ## Статус разработки (Phase 1)
 
 - [x] Weeks 1-2 — Backend setup, схема БД, Docker
-- [ ] Weeks 3-4 — Authentication, пользователи (каркас auth уже готов)
+- [x] Weeks 3-4 — Authentication, организации, управление пользователями, аудит-лог, тесты
 - [ ] Weeks 5-6 — Contract CRUD API, MinIO, парсинг PDF/DOCX
 - [ ] Weeks 7-8 — 4 AI-агента (Analyzer, Law, Risk, Draft) + оркестратор
 - [ ] Weeks 9-10 — Dashboard, frontend

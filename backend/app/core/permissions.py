@@ -3,10 +3,10 @@ from fastapi import Depends, HTTPException, status
 from app.core.dependencies import get_current_user
 from app.db.models import Role, User
 
-# Роли → права на контракты (ТЗ, Task 1.7)
+# Роли → права на контракты (ТЗ, Task 1.7) + manage_users для управления сотрудниками
 ROLE_PERMISSIONS: dict[str, list[str]] = {
-    Role.ADMIN.value: ["view_all", "create", "edit", "delete", "approve", "sign"],
-    Role.HEAD.value: ["view_all", "create", "edit", "approve"],
+    Role.ADMIN.value: ["view_all", "create", "edit", "delete", "approve", "sign", "manage_users"],
+    Role.HEAD.value: ["view_all", "create", "edit", "approve", "manage_users"],
     Role.SENIOR_LAWYER.value: ["view_all", "create", "edit", "approve"],
     Role.LAWYER.value: ["view_assigned", "create", "edit"],
     Role.COMPLIANCE.value: ["view_all", "approve_compliance"],

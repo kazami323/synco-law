@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import agents, auth, contracts, dashboard, users
+from app.api import agents, auth, contracts, dashboard, organizations, users
 from app.core.config import settings
 from app.db.base import engine
 
@@ -21,6 +21,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(organizations.router)
 app.include_router(users.router)
 app.include_router(contracts.router)
 app.include_router(agents.router)

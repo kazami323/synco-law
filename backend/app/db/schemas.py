@@ -18,7 +18,35 @@ class UserOut(BaseModel):
     username: str
     full_name: str | None = None
     role: str
+    organization_id: uuid.UUID | None = None
     is_active: bool
+
+
+class OrganizationCreate(BaseModel):
+    name: str
+    email: EmailStr | None = None
+    phone: str | None = None
+    address: str | None = None
+
+
+class OrganizationUpdate(BaseModel):
+    name: str | None = None
+    email: EmailStr | None = None
+    phone: str | None = None
+    address: str | None = None
+
+
+class OrganizationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    country: str
+    storage_limit: int
+    created_at: datetime
 
 
 class ContractCreate(BaseModel):
