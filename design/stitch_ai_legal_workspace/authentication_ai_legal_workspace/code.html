@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+
+<html lang="ru"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Legal Workspace - Вход</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Work+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "primary-fixed-dim": "#a1c9ff",
+                    "surface": "#f8f9ff",
+                    "background": "#f8f9ff",
+                    "on-tertiary": "#ffffff",
+                    "secondary": "#5f5f58",
+                    "on-primary": "#ffffff",
+                    "tertiary": "#874f00",
+                    "tertiary-fixed-dim": "#ffb86f",
+                    "on-secondary-fixed": "#1c1c17",
+                    "on-secondary-fixed-variant": "#474741",
+                    "on-secondary-container": "#63635c",
+                    "on-primary-fixed-variant": "#004880",
+                    "surface-container-highest": "#e0e2ea",
+                    "surface-container-low": "#f1f3fb",
+                    "surface-container-lowest": "#ffffff",
+                    "on-secondary": "#ffffff",
+                    "on-tertiary-fixed": "#2c1600",
+                    "on-primary-container": "#fdfcff",
+                    "error-container": "#ffdad6",
+                    "secondary-container": "#e2e0d7",
+                    "inverse-surface": "#2d3136",
+                    "inverse-on-surface": "#eff0f8",
+                    "primary-fixed": "#d2e4ff",
+                    "outline-variant": "#c0c7d3",
+                    "surface-container": "#eceef5",
+                    "surface-tint": "#0060a8",
+                    "primary-container": "#1777c9",
+                    "tertiary-container": "#a96400",
+                    "on-surface": "#181c21",
+                    "tertiary-fixed": "#ffdcbd",
+                    "inverse-primary": "#a1c9ff",
+                    "surface-container-high": "#e6e8ef",
+                    "on-primary-fixed": "#001c38",
+                    "on-tertiary-container": "#fffbff",
+                    "surface-dim": "#d8dae1",
+                    "on-error": "#ffffff",
+                    "surface-bright": "#f8f9ff",
+                    "error": "#ba1a1a",
+                    "on-background": "#181c21",
+                    "secondary-fixed": "#e5e2da",
+                    "on-tertiary-fixed-variant": "#693c00",
+                    "surface-variant": "#e0e2ea",
+                    "on-surface-variant": "#414751",
+                    "outline": "#717783",
+                    "secondary-fixed-dim": "#c8c6bf",
+                    "primary": "#005ea4",
+                    "on-error-container": "#93000a"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "sm": "8px",
+                    "margin-mobile": "16px",
+                    "xl": "24px",
+                    "margin-desktop": "32px",
+                    "2xl": "32px",
+                    "xs": "4px",
+                    "gutter": "16px",
+                    "lg": "16px",
+                    "md": "12px"
+            },
+            "fontFamily": {
+                    "body-sm": [
+                            "Work Sans"
+                    ],
+                    "headline-h2": [
+                            "Manrope"
+                    ],
+                    "caption": [
+                            "Work Sans"
+                    ],
+                    "body-md": [
+                            "Work Sans"
+                    ],
+                    "headline-h3": [
+                            "Manrope"
+                    ],
+                    "headline-h1": [
+                            "Manrope"
+                    ],
+                    "headline-h1-mobile": [
+                            "Manrope"
+                    ]
+            },
+            "fontSize": {
+                    "body-sm": [
+                            "13px",
+                            {
+                                    "lineHeight": "20px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "headline-h2": [
+                            "18px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "caption": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "letterSpacing": "0.02em",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "body-md": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "headline-h3": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "headline-h1": [
+                            "22px",
+                            {
+                                    "lineHeight": "32px",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "headline-h1-mobile": [
+                            "20px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "500"
+                            }
+                    ]
+            }
+          }
+        }
+      }
+    </script>
+</head>
+<body class="bg-background text-on-background antialiased min-h-screen flex items-center justify-center">
+<div class="w-full max-w-[1440px] h-screen flex flex-col md:flex-row overflow-hidden bg-surface-container-lowest">
+<!-- Left Section: Branding -->
+<div class="hidden md:flex flex-1 flex-col justify-between bg-surface-container-high p-margin-desktop border-r border-outline-variant relative overflow-hidden">
+<!-- Abstract Background Pattern -->
+<div class="absolute inset-0 opacity-20 pointer-events-none" style="background-image: radial-gradient(circle at 20% 80%, rgba(0, 94, 164, 0.4) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(23, 119, 201, 0.3) 0%, transparent 40%);"></div>
+<!-- Logo & Brand -->
+<div class="relative z-10 flex items-center gap-sm">
+<span class="material-symbols-outlined text-[32px] text-primary" style="font-variation-settings: 'FILL' 1;">gavel</span>
+<span class="font-headline-h2 text-headline-h2 font-bold tracking-tight text-primary">AI Legal Workspace</span>
+</div>
+<!-- Headlines -->
+<div class="relative z-10 flex flex-col gap-lg max-w-[480px]">
+<h1 class="font-headline-h1 text-headline-h1 md:text-[40px] md:leading-[48px] font-bold text-on-surface">Операционная система юридического отдела</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">Управление контрактами, анализ рисков, соответствие законодательству РУз.</p>
+<!-- Trust Indicators -->
+<div class="flex gap-md mt-xl pt-lg border-t border-outline-variant/30">
+<div class="flex items-center gap-xs text-on-surface-variant font-caption text-caption">
+<span class="material-symbols-outlined text-[16px] text-primary">security</span>
+                        ISO 27001 Certified
+                    </div>
+<div class="flex items-center gap-xs text-on-surface-variant font-caption text-caption">
+<span class="material-symbols-outlined text-[16px] text-primary">data_check</span>
+                        Uzbekistan Data Privacy
+                    </div>
+</div>
+</div>
+<!-- Bottom decorative element -->
+<div class="relative z-10 font-caption text-caption text-on-surface-variant/70">
+                © 2024 AI Legal Workspace
+            </div>
+</div>
+<!-- Right Section: Login Form -->
+<div class="flex-1 flex flex-col justify-center items-center p-margin-mobile md:p-margin-desktop bg-surface-container-lowest">
+<div class="w-full max-w-[400px] flex flex-col gap-xl">
+<!-- Mobile Logo (Hidden on Desktop) -->
+<div class="flex md:hidden items-center justify-center gap-sm mb-lg">
+<span class="material-symbols-outlined text-[28px] text-primary" style="font-variation-settings: 'FILL' 1;">gavel</span>
+<span class="font-headline-h2 text-headline-h2 font-bold tracking-tight text-primary">AI Legal Workspace</span>
+</div>
+<div class="flex flex-col gap-xs text-center md:text-left">
+<h2 class="font-headline-h2 text-headline-h2 font-bold text-on-surface">Вход в систему</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Пожалуйста, введите ваши учетные данные.</p>
+</div>
+<form action="#" class="flex flex-col gap-lg" method="POST">
+<!-- Email Input -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-sm text-body-sm font-semibold text-on-surface" for="email">Электронная почта</label>
+<div class="relative">
+<span class="absolute inset-y-0 left-0 flex items-center pl-sm pointer-events-none text-outline">
+<span class="material-symbols-outlined text-[20px]">mail</span>
+</span>
+<input class="w-full h-[40px] pl-[36px] pr-md bg-surface-container-lowest border border-outline-variant rounded focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-body-sm text-body-sm text-on-surface placeholder:text-outline-variant outline-none" id="email" name="email" placeholder="your@company.uz" required="" type="email"/>
+</div>
+</div>
+<!-- Password Input -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-sm text-body-sm font-semibold text-on-surface" for="password">Пароль</label>
+<div class="relative">
+<span class="absolute inset-y-0 left-0 flex items-center pl-sm pointer-events-none text-outline">
+<span class="material-symbols-outlined text-[20px]">lock</span>
+</span>
+<input class="w-full h-[40px] pl-[36px] pr-[36px] bg-surface-container-lowest border border-outline-variant rounded focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-body-sm text-body-sm text-on-surface placeholder:text-outline-variant outline-none" id="password" name="password" placeholder="••••••••" required="" type="password"/>
+<button class="absolute inset-y-0 right-0 flex items-center pr-sm text-outline hover:text-primary transition-colors cursor-pointer outline-none" type="button">
+<span class="material-symbols-outlined text-[20px]">visibility_off</span>
+</button>
+</div>
+</div>
+<!-- Actions Row -->
+<div class="flex items-center justify-between mt-xs">
+<label class="flex items-center gap-sm cursor-pointer group">
+<div class="relative flex items-center justify-center w-[16px] h-[16px] border border-outline-variant rounded-sm bg-surface-container-lowest group-hover:border-primary transition-colors">
+<input class="peer sr-only" type="checkbox"/>
+<span class="material-symbols-outlined text-[14px] text-on-primary opacity-0 peer-checked:opacity-100 peer-checked:bg-primary absolute inset-0 rounded-sm transition-all" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant select-none">Запомнить меня</span>
+</label>
+<a class="font-body-sm text-body-sm text-primary hover:text-primary-container transition-colors font-medium" href="#">Забыли пароль?</a>
+</div>
+<!-- Submit Button -->
+<button class="w-full h-[40px] md:h-[40px] h-[44px] bg-primary hover:bg-primary-container text-on-primary font-body-md text-body-md font-medium rounded-lg transition-colors flex items-center justify-center mt-sm" type="submit">
+                        Войти
+                    </button>
+<!-- Register Link -->
+<div class="text-center mt-sm">
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">
+                            Или зарегистрируйтесь
+                        </a>
+</div>
+</form>
+</div>
+</div>
+</div>
+</body></html>

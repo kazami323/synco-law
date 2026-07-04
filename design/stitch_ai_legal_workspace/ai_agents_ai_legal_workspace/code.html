@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+
+<html lang="ru"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Legal Workspace - Agents</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=Work+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "primary-fixed-dim": "#a1c9ff",
+                      "surface": "#f8f9ff",
+                      "background": "#f8f9ff",
+                      "on-tertiary": "#ffffff",
+                      "secondary": "#5f5f58",
+                      "on-primary": "#ffffff",
+                      "tertiary": "#874f00",
+                      "tertiary-fixed-dim": "#ffb86f",
+                      "on-secondary-fixed": "#1c1c17",
+                      "on-secondary-fixed-variant": "#474741",
+                      "on-secondary-container": "#63635c",
+                      "on-primary-fixed-variant": "#004880",
+                      "surface-container-highest": "#e0e2ea",
+                      "surface-container-low": "#f1f3fb",
+                      "surface-container-lowest": "#ffffff",
+                      "on-secondary": "#ffffff",
+                      "on-tertiary-fixed": "#2c1600",
+                      "on-primary-container": "#fdfcff",
+                      "error-container": "#ffdad6",
+                      "secondary-container": "#e2e0d7",
+                      "inverse-surface": "#2d3136",
+                      "inverse-on-surface": "#eff0f8",
+                      "primary-fixed": "#d2e4ff",
+                      "outline-variant": "#c0c7d3",
+                      "surface-container": "#eceef5",
+                      "surface-tint": "#0060a8",
+                      "primary-container": "#1777c9",
+                      "tertiary-container": "#a96400",
+                      "on-surface": "#181c21",
+                      "tertiary-fixed": "#ffdcbd",
+                      "inverse-primary": "#a1c9ff",
+                      "surface-container-high": "#e6e8ef",
+                      "on-primary-fixed": "#001c38",
+                      "on-tertiary-container": "#fffbff",
+                      "surface-dim": "#d8dae1",
+                      "on-error": "#ffffff",
+                      "surface-bright": "#f8f9ff",
+                      "error": "#ba1a1a",
+                      "on-background": "#181c21",
+                      "secondary-fixed": "#e5e2da",
+                      "on-tertiary-fixed-variant": "#693c00",
+                      "surface-variant": "#e0e2ea",
+                      "on-surface-variant": "#414751",
+                      "outline": "#717783",
+                      "secondary-fixed-dim": "#c8c6bf",
+                      "primary": "#005ea4",
+                      "on-error-container": "#93000a"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "sm": "8px",
+                      "margin-mobile": "16px",
+                      "xl": "24px",
+                      "margin-desktop": "32px",
+                      "2xl": "32px",
+                      "xs": "4px",
+                      "gutter": "16px",
+                      "lg": "16px",
+                      "md": "12px"
+              },
+              "fontFamily": {
+                      "body-sm": [
+                              "Work Sans"
+                      ],
+                      "headline-h2": [
+                              "Manrope"
+                      ],
+                      "caption": [
+                              "Work Sans"
+                      ],
+                      "body-md": [
+                              "Work Sans"
+                      ],
+                      "headline-h3": [
+                              "Manrope"
+                      ],
+                      "headline-h1": [
+                              "Manrope"
+                      ],
+                      "headline-h1-mobile": [
+                              "Manrope"
+                      ]
+              },
+              "fontSize": {
+                      "body-sm": [
+                              "13px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-h2": [
+                              "18px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "caption": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.02em",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "body-md": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-h3": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-h1": [
+                              "22px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-h1-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "500"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+    </script>
+<style>
+        /* Base styles */
+        body {
+            background-color: theme('colors.background');
+            color: theme('colors.on-background');
+        }
+        
+        /* Agent Card Hover Effects */
+        .agent-card {
+            transition: all 0.3s ease;
+        }
+        .agent-card:hover {
+            border-color: theme('colors.primary');
+            box-shadow: 0 4px 20px -2px rgba(0, 94, 164, 0.08);
+            transform: translateY(-2px);
+        }
+        .agent-card.active {
+            border-color: theme('colors.primary');
+            background-color: theme('colors.surface-container-lowest');
+            box-shadow: 0 4px 20px -2px rgba(0, 94, 164, 0.12);
+        }
+
+        /* Detail Panel transition */
+        .detail-panel {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        /* Hide scrollbar for clean look */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: theme('colors.surface-container-low'); 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: theme('colors.outline-variant'); 
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: theme('colors.outline'); 
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden antialiased font-body-md text-body-md bg-background text-on-background">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col p-lg gap-sm fixed left-0 top-0 h-full w-[260px] bg-surface-container-low border-r border-outline-variant z-20 transition-all duration-200 ease-in-out">
+<!-- Header -->
+<div class="flex items-center gap-md px-md py-lg mb-4">
+<div class="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center text-on-primary-container shrink-0">
+<span class="material-symbols-outlined" data-icon="gavel" style="font-variation-settings: 'FILL' 1;">gavel</span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-h3 text-headline-h3 text-primary truncate">AI Legal Workspace</span>
+<span class="font-caption text-caption text-on-surface-variant">Legal OS</span>
+</div>
+</div>
+<!-- CTA -->
+<button class="w-full h-10 bg-primary text-on-primary rounded-lg font-body-sm text-body-sm font-medium mb-4 flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-sm">
+<span class="material-symbols-outlined text-[18px]">add</span>
+            New Contract
+        </button>
+<!-- Navigation Links -->
+<div class="flex-1 overflow-y-auto flex flex-col gap-xs">
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors" data-icon="dashboard">dashboard</span>
+<span class="font-body-sm text-body-sm">Dashboard</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors" data-icon="description">description</span>
+<span class="font-body-sm text-body-sm">Contracts</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors" data-icon="analytics">analytics</span>
+<span class="font-body-sm text-body-sm">Analysis</span>
+</a>
+<!-- ACTIVE TAB: Agents -->
+<a class="flex items-center gap-md px-md py-sm rounded-lg bg-secondary-container text-on-secondary-container font-medium" href="#">
+<span class="material-symbols-outlined text-[20px] text-primary" data-icon="smart_toy" style="font-variation-settings: 'FILL' 1;">smart_toy</span>
+<span class="font-body-sm text-body-sm text-on-surface">Agents</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors" data-icon="account_tree">account_tree</span>
+<span class="font-body-sm text-body-sm">Workflow</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors" data-icon="archive">archive</span>
+<span class="font-body-sm text-body-sm">Archive</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors" data-icon="settings">settings</span>
+<span class="font-body-sm text-body-sm">Settings</span>
+</a>
+</div>
+<!-- Footer Links -->
+<div class="mt-auto pt-4 border-t border-outline-variant flex flex-col gap-xs">
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="cloud_done">cloud_done</span>
+<span class="font-caption text-caption">System Status</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="help">help</span>
+<span class="font-caption text-caption">Help</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Wrapper -->
+<div class="flex flex-col flex-1 w-full md:pl-[260px] h-screen bg-background relative">
+<!-- TopNavBar (Mobile Only for Navigation, acts as Header on Desktop) -->
+<header class="flex justify-between items-center w-full px-margin-mobile md:px-margin-desktop h-[64px] bg-surface-container-lowest border-b border-outline-variant sticky top-0 z-10 shrink-0">
+<!-- Mobile Menu Toggle -->
+<button class="md:hidden text-on-surface-variant p-2 -ml-2 rounded-lg hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<!-- Brand (Mobile Only) / Page Title (Desktop) -->
+<div class="flex items-center gap-4">
+<span class="md:hidden font-headline-h2 text-headline-h2 font-bold text-primary">AI Legal Workspace</span>
+<!-- Breadcrumb style title for Desktop -->
+<div class="hidden md:flex items-center text-on-surface-variant">
+<span class="font-body-sm text-body-sm">Workspace</span>
+<span class="material-symbols-outlined text-[16px] mx-2">chevron_right</span>
+<span class="font-body-sm text-body-sm font-medium text-on-surface">AI-агенты системы</span>
+</div>
+</div>
+<!-- Trailing Actions -->
+<div class="flex items-center gap-md">
+<!-- Search -->
+<div class="relative hidden sm:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">search</span>
+<input class="w-64 h-10 pl-10 pr-4 bg-surface-container-low border border-outline-variant rounded-full text-body-sm font-body-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary-fixed transition-all placeholder:text-outline" placeholder="Search agents..." type="text"/>
+</div>
+<!-- Settings & Logout Icons -->
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]" data-icon="settings">settings</span>
+</button>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]" data-icon="logout">logout</span>
+</button>
+<div class="w-[1px] h-6 bg-outline-variant mx-2 hidden sm:block"></div>
+<!-- Profile -->
+<div class="flex items-center gap-sm cursor-pointer hover:opacity-80 transition-opacity">
+<div class="hidden sm:flex flex-col text-right">
+<span class="font-body-sm text-body-sm font-medium text-on-surface">Руководитель</span>
+<span class="font-caption text-caption text-on-surface-variant">Генеральный директор</span>
+</div>
+<img alt="Руководитель Avatar" class="w-10 h-10 rounded-full object-cover border border-outline-variant bg-surface-container-highest" data-alt="A professional corporate headshot of a mature male executive in a sharp navy suit, clean bright office background, realistic lighting, 8k resolution, photorealistic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB_pEOsktrXT53BF6jCiCn35eKHgnDiykudTCLOjpYRgX-LKwl3_zFP9YL59_ZgCyk2bVDoQjmmwsCxj1SV2Z23EtqAggTnI3YhWaVkrdCyS-5QFxdDDXkqehFR5IOIR8WLpnv_bpcYdvBEyVif4aFRfLZ9kdoCkQ_8vpKhCZGrZkr4ZI3xENu55a8EzA8gzG7cBkGVfruut_g_e07mru2pcAfHap9TOTUuCkCPlRBgZEgBgL5l7y566QuREAZUN0blTMb5xWeDGBGm"/>
+</div>
+</div>
+</header>
+<!-- Canvas Area -->
+<main class="flex-1 overflow-y-auto p-margin-mobile md:p-margin-desktop w-full max-w-[1600px] mx-auto">
+<!-- Page Header -->
+<div class="mb-xl flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+<div>
+<h1 class="font-headline-h1-mobile md:font-headline-h1 text-headline-h1-mobile md:text-headline-h1 text-on-surface mb-2">AI-агенты системы</h1>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-2xl">
+                        Оркестрация специализированных ИИ-моделей для автоматизации юридических процессов. 
+                    </p>
+</div>
+<div class="flex items-center gap-sm">
+<div class="flex items-center gap-xs px-sm py-xs bg-surface-container-lowest border border-outline-variant rounded-lg">
+<span class="w-2 h-2 rounded-full bg-[#10B981]"></span>
+<span class="font-caption text-caption text-on-surface-variant">All Systems Operational</span>
+</div>
+</div>
+</div>
+<!-- Bento Layout Wrapper -->
+<div class="flex flex-col xl:flex-row gap-xl items-start h-auto xl:h-[calc(100vh-220px)] min-h-[600px]">
+<!-- LEFT COLUMN: Agents Grid & Info -->
+<div class="flex-1 w-full flex flex-col gap-xl h-full">
+<!-- Grid Container -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2 2xl:grid-cols-3 gap-lg overflow-y-auto pr-2 pb-4 h-full" style="align-content: start;">
+<!-- Agent Card 1: Active -->
+<div class="agent-card active flex flex-col bg-surface-container-lowest border border-primary rounded-xl p-lg cursor-pointer relative overflow-hidden group">
+<!-- Subtle highlight background -->
+<div class="absolute inset-0 bg-primary-fixed opacity-5"></div>
+<!-- Header -->
+<div class="flex justify-between items-start mb-md relative z-10">
+<div class="w-12 h-12 rounded-lg bg-primary-container text-on-primary-container flex items-center justify-center shrink-0 shadow-sm">
+<span class="material-symbols-outlined text-[24px]" data-icon="description" style="font-variation-settings: 'FILL' 1;">description</span>
+</div>
+<div class="flex items-center gap-xs px-2 py-1 bg-surface-container-low border border-outline-variant rounded-full">
+<span class="w-2 h-2 rounded-full bg-[#10B981]"></span>
+<span class="font-caption text-caption font-medium text-on-surface">Активен</span>
+</div>
+</div>
+<!-- Content -->
+<div class="flex-1 relative z-10 mb-md">
+<h3 class="font-headline-h3 text-headline-h3 text-on-surface mb-xs">Contract Analyzer</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">
+                                    Извлекает ключевые условия, риски и обязательства из договоров.
+                                </p>
+</div>
+<!-- Stats Footer -->
+<div class="pt-sm border-t border-outline-variant grid grid-cols-3 gap-2 relative z-10">
+<div class="flex flex-col">
+<span class="font-caption text-caption text-outline">Processed</span>
+<span class="font-body-sm text-body-sm font-medium text-on-surface">1,240</span>
+</div>
+<div class="flex flex-col">
+<span class="font-caption text-caption text-outline">Avg. Time</span>
+<span class="font-body-sm text-body-sm font-medium text-on-surface">2.3m</span>
+</div>
+<div class="flex flex-col">
+<span class="font-caption text-caption text-outline">Errors</span>
+<span class="font-body-sm text-body-sm font-medium text-error">0.1%</span>
+</div>
+</div>
+</div>
+<!-- Agent Card 2 -->
+<div class="agent-card flex flex-col bg-surface-container-lowest border border-outline-variant rounded-xl p-lg cursor-pointer">
+<div class="flex justify-between items-start mb-md">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high text-on-surface flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[24px]" data-icon="balance">balance</span>
+</div>
+<div class="flex items-center gap-xs px-2 py-1 bg-surface-container-low border border-outline-variant rounded-full">
+<span class="w-2 h-2 rounded-full bg-[#10B981]"></span>
+<span class="font-caption text-caption font-medium text-on-surface">Активен</span>
+</div>
+</div>
+<div class="flex-1 mb-md">
+<h3 class="font-headline-h3 text-headline-h3 text-on-surface mb-xs">Law Agent</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">
+                                    Поиск и анализ судебной практики и нормативных актов.
+                                </p>
+</div>
+<div class="pt-sm border-t border-outline-variant grid grid-cols-3 gap-2">
+<div class="flex flex-col">
+<span class="font-caption text-caption text-outline">Processed</span>
+<span class="font-body-sm text-body-sm font-medium text-on-surface">8,451</span>
+</div>
+<div class="flex flex-col">
+<span class="font-caption text-caption text-outline">Avg. Time</span>
+<span class="font-body-sm text-body-sm font-medium text-on-surface">0.8m</span>
+</div>
+<div class="flex flex-col">
+<span class="font-caption text-caption text-outline">Errors</span>
+<span class="font-body-sm text-body-sm font-medium text-on-surface">0.0%</span>
+</div>
+</div>
+</div>
+<!-- Agent Card 3 -->
+<div class="agent-card flex flex-col bg-surface-container-lowest border border-outline-variant rounded-xl p-lg cursor-pointer opacity-70 hover:opacity-100">
+<div class="flex justify-between items-start mb-md">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high text-on-surface flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[24px]" data-icon="edit_document">edit_document</span>
+</div>
+<div class="flex items-center gap-xs px-2 py-1 bg-surface-container-low border border-outline-variant rounded-full">
+<span class="w-2 h-2 rounded-full bg-outline"></span>
+<span class="font-caption text-caption font-medium text-on-surface-variant">Standby</span>
+</div>
+</div>
+<div class="flex-1 mb-md">
+<h3 class="font-headline-h3 text-headline-h3 text-on-surface mb-xs">Drafting Bot</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">
+                                    Генерация типовых документов на основе шаблонов.
+                                </p>
+</div>
+<div class="pt-sm border-t border-outline-variant grid grid-cols-3 gap-2">
+<div class="flex flex-col">
+<span class="font-caption text-caption text-outline">Processed</span>
+<span class="font-body-sm text-body-sm font-medium text-on-surface">432</span>
+</div>
+<div class="flex flex-col">
+<span class="font-caption text-caption text-outline">Avg. Time</span>
+<span class="font-body-sm text-body-sm font-medium text-on-surface">1.2m</span>
+</div>
+<div class="flex flex-col">
+<span class="font-caption text-caption text-outline">Errors</span>
+<span class="font-body-sm text-body-sm font-medium text-on-surface">0.5%</span>
+</div>
+</div>
+</div>
+<!-- Agent Card 4 -->
+<div class="agent-card flex flex-col bg-surface-container-lowest border border-outline-variant rounded-xl p-lg cursor-pointer">
+<div class="flex justify-between items-start mb-md">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high text-on-surface flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[24px]" data-icon="policy">policy</span>
+</div>
+<div class="flex items-center gap-xs px-2 py-1 bg-surface-container-low border border-outline-variant rounded-full">
+<span class="w-2 h-2 rounded-full bg-[#10B981]"></span>
+<span class="font-caption text-caption font-medium text-on-surface">Активен</span>
+</div>
+</div>
+<div class="flex-1 mb-md">
+<h3 class="font-headline-h3 text-headline-h3 text-on-surface mb-xs">Compliance Checker</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">
+                                    Проверка документов на соответствие внутренним политикам.
+                                </p>
+</div>
+<div class="pt-sm border-t border-outline-variant grid grid-cols-3 gap-2">
+<div class="flex flex-col">
+<span class="font-caption text-caption text-outline">Processed</span>
+<span class="font-body-sm text-body-sm font-medium text-on-surface">3,091</span>
+</div>
+<div class="flex flex-col">
+<span class="font-caption text-caption text-outline">Avg. Time</span>
+<span class="font-body-sm text-body-sm font-medium text-on-surface">3.5m</span>
+</div>
+<div class="flex flex-col">
+<span class="font-caption text-caption text-outline">Errors</span>
+<span class="font-body-sm text-body-sm font-medium text-on-surface">0.2%</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Info Block -->
+<div class="mt-auto bg-surface-container-lowest border border-outline-variant rounded-xl p-lg flex flex-col shrink-0">
+<div class="flex items-center gap-sm mb-sm">
+<span class="material-symbols-outlined text-primary" data-icon="info">info</span>
+<h4 class="font-headline-h3 text-headline-h3 text-on-surface">Как работают агенты</h4>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                            Система использует <strong>LangGraph orchestrator</strong> для маршрутизации задач. Каждый агент — это специализированная LLM или инструмент, обученный на конкретной юридической задаче. Оркестратор анализирует входящий запрос и динамически строит граф выполнения, передавая контекст между агентами для достижения конечного результата.
+                        </p>
+</div>
+</div>
+<!-- RIGHT COLUMN: Details Panel (Sticky/Fixed height on Desktop) -->
+<aside class="detail-panel w-full xl:w-[400px] 2xl:w-[480px] h-full shrink-0 flex flex-col bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+<!-- Detail Header -->
+<div class="p-lg border-b border-outline-variant bg-surface flex flex-col gap-md relative">
+<!-- Decorative background subtle element -->
+<div class="absolute right-0 top-0 opacity-10 pointer-events-none w-32 h-32" style="background: radial-gradient(circle, theme('colors.primary-fixed-dim') 0%, transparent 70%);"></div>
+<div class="flex justify-between items-start z-10">
+<div class="w-14 h-14 rounded-xl bg-primary-container text-on-primary-container flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-[28px]" data-icon="description" style="font-variation-settings: 'FILL' 1;">description</span>
+</div>
+<div class="flex gap-2">
+<button class="w-8 h-8 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors border border-outline-variant">
+<span class="material-symbols-outlined text-[18px]">pause</span>
+</button>
+<button class="w-8 h-8 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors border border-outline-variant">
+<span class="material-symbols-outlined text-[18px]">settings</span>
+</button>
+</div>
+</div>
+<div class="z-10">
+<div class="flex items-center gap-sm mb-xs">
+<h2 class="font-headline-h2 text-headline-h2 text-on-surface">Contract Analyzer</h2>
+<span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-secondary-container text-on-secondary-container">v2.4.1</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                                Модель глубокого анализа коммерческих договоров (NDA, MSA, DPA). Выделяет ключевые сущности и оценивает риски.
+                            </p>
+</div>
+</div>
+<!-- Detail Content (Scrollable) -->
+<div class="flex-1 overflow-y-auto p-lg flex flex-col gap-lg bg-surface-container-lowest">
+<!-- Key Metrics -->
+<div class="grid grid-cols-2 gap-md">
+<div class="p-sm bg-surface-container-low rounded-lg border border-outline-variant">
+<span class="font-caption text-caption text-on-surface-variant uppercase block mb-1">Accuracy</span>
+<div class="flex items-end gap-2">
+<span class="font-headline-h2 text-headline-h2 text-on-surface">97.8%</span>
+<span class="font-caption text-caption text-[#10B981] mb-1 flex items-center">
+<span class="material-symbols-outlined text-[12px]">arrow_upward</span> 0.2%
+                                    </span>
+</div>
+</div>
+<div class="p-sm bg-surface-container-low rounded-lg border border-outline-variant">
+<span class="font-caption text-caption text-on-surface-variant uppercase block mb-1">Avg Process Time</span>
+<div class="flex items-end gap-2">
+<span class="font-headline-h2 text-headline-h2 text-on-surface">2.3 min</span>
+</div>
+</div>
+<div class="p-sm bg-surface-container-low rounded-lg border border-outline-variant">
+<span class="font-caption text-caption text-on-surface-variant uppercase block mb-1">Tokens Processed</span>
+<div class="flex items-end gap-2">
+<span class="font-headline-h2 text-headline-h2 text-on-surface">14.2M</span>
+</div>
+</div>
+<div class="p-sm bg-surface-container-low rounded-lg border border-outline-variant">
+<span class="font-caption text-caption text-on-surface-variant uppercase block mb-1">Cost / Run</span>
+<div class="flex items-end gap-2">
+<span class="font-headline-h2 text-headline-h2 text-on-surface">$0.04</span>
+</div>
+</div>
+</div>
+<!-- System Parameters -->
+<div>
+<h3 class="font-headline-h3 text-headline-h3 text-on-surface mb-sm border-b border-outline-variant pb-2">Parameters</h3>
+<ul class="flex flex-col gap-2 font-body-sm text-body-sm">
+<li class="flex justify-between">
+<span class="text-on-surface-variant">Base Model</span>
+<span class="font-medium text-on-surface">GPT-4 Turbo (Legal Fine-tune)</span>
+</li>
+<li class="flex justify-between">
+<span class="text-on-surface-variant">Context Window</span>
+<span class="font-medium text-on-surface">128k tokens</span>
+</li>
+<li class="flex justify-between">
+<span class="text-on-surface-variant">Temperature</span>
+<span class="font-medium text-on-surface">0.1 (Deterministic)</span>
+</li>
+<li class="flex justify-between">
+<span class="text-on-surface-variant">Max Output</span>
+<span class="font-medium text-on-surface">4096 tokens</span>
+</li>
+</ul>
+</div>
+<!-- Recent Activity Log -->
+<div class="flex-1 flex flex-col min-h-[200px]">
+<div class="flex justify-between items-end border-b border-outline-variant pb-2 mb-sm">
+<h3 class="font-headline-h3 text-headline-h3 text-on-surface">Recent Activity Log</h3>
+<button class="font-caption text-caption text-primary hover:underline">View All</button>
+</div>
+<div class="flex-1 overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="font-caption text-caption text-on-surface-variant uppercase border-b border-outline-variant">
+<th class="py-2 pr-2 font-normal">Time</th>
+<th class="py-2 px-2 font-normal">Task ID</th>
+<th class="py-2 pl-2 font-normal">Status</th>
+</tr>
+</thead>
+<tbody class="font-body-sm text-body-sm text-on-surface">
+<tr class="border-b border-outline-variant last:border-0 hover:bg-surface-container-low transition-colors">
+<td class="py-2 pr-2 text-on-surface-variant text-[11px]">10:42:01</td>
+<td class="py-2 px-2 truncate max-w-[100px]">MSA_TechCorp_Final.pdf</td>
+<td class="py-2 pl-2">
+<span class="text-[#10B981] flex items-center gap-1 text-[11px] font-medium"><span class="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span> Success</span>
+</td>
+</tr>
+<tr class="border-b border-outline-variant last:border-0 hover:bg-surface-container-low transition-colors">
+<td class="py-2 pr-2 text-on-surface-variant text-[11px]">10:38:15</td>
+<td class="py-2 px-2 truncate max-w-[100px]">NDA_Vendor_v2.docx</td>
+<td class="py-2 pl-2">
+<span class="text-[#10B981] flex items-center gap-1 text-[11px] font-medium"><span class="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span> Success</span>
+</td>
+</tr>
+<tr class="border-b border-outline-variant last:border-0 hover:bg-surface-container-low transition-colors">
+<td class="py-2 pr-2 text-on-surface-variant text-[11px]">10:15:44</td>
+<td class="py-2 px-2 truncate max-w-[100px]">LeaseAgreement_Scan.pdf</td>
+<td class="py-2 pl-2">
+<span class="text-tertiary flex items-center gap-1 text-[11px] font-medium"><span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span> OCR Warn</span>
+</td>
+</tr>
+<tr class="border-b border-outline-variant last:border-0 hover:bg-surface-container-low transition-colors">
+<td class="py-2 pr-2 text-on-surface-variant text-[11px]">09:55:10</td>
+<td class="py-2 px-2 truncate max-w-[100px]">DPA_EU_Standard.pdf</td>
+<td class="py-2 pl-2">
+<span class="text-[#10B981] flex items-center gap-1 text-[11px] font-medium"><span class="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span> Success</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</main>
+</div>
+</body></html>

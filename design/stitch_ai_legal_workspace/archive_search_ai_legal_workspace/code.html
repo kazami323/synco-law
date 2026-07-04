@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+
+<html lang="ru"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Archive / Search - AI Legal Workspace</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700&amp;family=Work+Sans:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed-dim": "#a1c9ff",
+                        "surface": "#f8f9ff",
+                        "background": "#f8f9ff",
+                        "on-tertiary": "#ffffff",
+                        "secondary": "#5f5f58",
+                        "on-primary": "#ffffff",
+                        "tertiary": "#874f00",
+                        "tertiary-fixed-dim": "#ffb86f",
+                        "on-secondary-fixed": "#1c1c17",
+                        "on-secondary-fixed-variant": "#474741",
+                        "on-secondary-container": "#63635c",
+                        "on-primary-fixed-variant": "#004880",
+                        "surface-container-highest": "#e0e2ea",
+                        "surface-container-low": "#f1f3fb",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary-fixed": "#2c1600",
+                        "on-primary-container": "#fdfcff",
+                        "error-container": "#ffdad6",
+                        "secondary-container": "#e2e0d7",
+                        "inverse-surface": "#2d3136",
+                        "inverse-on-surface": "#eff0f8",
+                        "primary-fixed": "#d2e4ff",
+                        "outline-variant": "#c0c7d3",
+                        "surface-container": "#eceef5",
+                        "surface-tint": "#0060a8",
+                        "primary-container": "#1777c9",
+                        "tertiary-container": "#a96400",
+                        "on-surface": "#181c21",
+                        "tertiary-fixed": "#ffdcbd",
+                        "inverse-primary": "#a1c9ff",
+                        "surface-container-high": "#e6e8ef",
+                        "on-primary-fixed": "#001c38",
+                        "on-tertiary-container": "#fffbff",
+                        "surface-dim": "#d8dae1",
+                        "on-error": "#ffffff",
+                        "surface-bright": "#f8f9ff",
+                        "error": "#ba1a1a",
+                        "on-background": "#181c21",
+                        "secondary-fixed": "#e5e2da",
+                        "on-tertiary-fixed-variant": "#693c00",
+                        "surface-variant": "#e0e2ea",
+                        "on-surface-variant": "#414751",
+                        "outline": "#717783",
+                        "secondary-fixed-dim": "#c8c6bf",
+                        "primary": "#005ea4",
+                        "on-error-container": "#93000a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "margin-mobile": "16px",
+                        "xl": "24px",
+                        "margin-desktop": "32px",
+                        "2xl": "32px",
+                        "xs": "4px",
+                        "gutter": "16px",
+                        "lg": "16px",
+                        "md": "12px"
+                    },
+                    "fontFamily": {
+                        "body-sm": ["Work Sans"],
+                        "headline-h2": ["Manrope"],
+                        "caption": ["Work Sans"],
+                        "body-md": ["Work Sans"],
+                        "headline-h3": ["Manrope"],
+                        "headline-h1": ["Manrope"],
+                        "headline-h1-mobile": ["Manrope"]
+                    },
+                    "fontSize": {
+                        "body-sm": ["13px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "headline-h2": ["18px", { "lineHeight": "28px", "fontWeight": "500" }],
+                        "caption": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "400" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-h3": ["16px", { "lineHeight": "24px", "fontWeight": "500" }],
+                        "headline-h1": ["22px", { "lineHeight": "32px", "fontWeight": "500" }],
+                        "headline-h1-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .icon-fill {
+            font-variation-settings: 'FILL' 1;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md text-body-md h-screen flex overflow-hidden">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col bg-surface-container-low fixed left-0 top-0 h-full w-[260px] border-r border-outline-variant p-lg gap-sm transition-all duration-200 ease-in-out z-20">
+<div class="mb-xl flex items-center gap-md">
+<div class="w-8 h-8 rounded bg-primary flex items-center justify-center text-on-primary font-bold">L</div>
+<div>
+<h1 class="font-headline-h3 text-headline-h3 text-primary">AI Legal Workspace</h1>
+<p class="font-caption text-caption text-on-surface-variant">Legal OS</p>
+</div>
+</div>
+<button class="w-full bg-primary text-on-primary h-[40px] rounded-lg font-body-sm text-body-sm mb-lg hover:bg-surface-tint transition-colors">
+            New Contract
+        </button>
+<div class="flex-1 flex flex-col gap-xs">
+<a class="flex items-center gap-md p-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-body-sm text-body-sm">Dashboard</span>
+</a>
+<a class="flex items-center gap-md p-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+<span class="font-body-sm text-body-sm">Contracts</span>
+</a>
+<a class="flex items-center gap-md p-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="font-body-sm text-body-sm">Analysis</span>
+</a>
+<a class="flex items-center gap-md p-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="smart_toy">smart_toy</span>
+<span class="font-body-sm text-body-sm">Agents</span>
+</a>
+<a class="flex items-center gap-md p-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="account_tree">account_tree</span>
+<span class="font-body-sm text-body-sm">Workflow</span>
+</a>
+<a class="flex items-center gap-md p-sm rounded-lg bg-secondary-container text-on-secondary-container font-medium group" href="#">
+<span class="material-symbols-outlined icon-fill text-primary" data-icon="archive">archive</span>
+<span class="font-body-sm text-body-sm">Archive</span>
+</a>
+<a class="flex items-center gap-md p-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-body-sm text-body-sm">Settings</span>
+</a>
+</div>
+<div class="mt-auto pt-lg border-t border-outline-variant flex flex-col gap-xs">
+<a class="flex items-center gap-md p-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="cloud_done">cloud_done</span>
+<span class="font-body-sm text-body-sm">System Status</span>
+</a>
+<a class="flex items-center gap-md p-sm rounded-lg text-on-surface-variant hover:bg-primary-fixed hover:text-on-primary-fixed-variant transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span class="font-body-sm text-body-sm">Help</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Wrapper -->
+<div class="flex-1 flex flex-col md:ml-[260px] h-full overflow-hidden relative z-10">
+<!-- TopNavBar (Mobile) -->
+<header class="md:hidden bg-surface-container-lowest flex justify-between items-center w-full px-margin-mobile h-[64px] border-b border-outline-variant z-20">
+<div class="flex items-center gap-md">
+<button class="material-symbols-outlined text-primary">menu</button>
+<span class="font-headline-h2 text-headline-h2 font-bold text-primary">AI Legal Workspace</span>
+</div>
+<div class="flex items-center gap-md">
+<button class="material-symbols-outlined text-on-surface-variant">search</button>
+<img class="w-8 h-8 rounded-full object-cover" data-alt="A small, professional headshot of an executive in a well-lit corporate setting, soft blue tones." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBhrZlIOCvpDF40_mGG_U5ubo5zEuxb7fuH4VLEww7NFFhQ9CNE3hzbi0iSbjZj_SUXPTcRMvu10gCmsc_P8jKx8H8s-YTcL5H_63tC0l-v8x7XqkM0yEIST9-3HDOiUnpsZE1ACA_6ptaxtOSjJIm-11F_ghCxOUZmKT_6IKQr5ZYG_OcrNIShJvA06wDpq-h1x25EAad2yIBXAnOV6cdDgW2ySzeXLrDJ4AgewLFcVzrBNlbPgQyGLjSekF-HQA323EuEtEIUddBf"/>
+</div>
+</header>
+<!-- TopNavBar (Desktop - Contextual Header for Archive) -->
+<header class="hidden md:flex bg-surface-container-lowest justify-between items-center w-full px-margin-desktop h-[64px] border-b border-outline-variant shrink-0">
+<h2 class="font-headline-h2 text-headline-h2 font-bold text-on-surface">Архив Документов</h2>
+<div class="flex items-center gap-lg">
+<div class="text-right">
+<p class="font-body-sm text-body-sm font-medium text-on-surface">Руководитель</p>
+<p class="font-caption text-caption text-on-surface-variant">Генеральный директор</p>
+</div>
+<img class="w-10 h-10 rounded-full border border-outline-variant object-cover" data-alt="A professional headshot of a corporate executive against a neutral studio background, conveying trust and authority." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDENMVJr-ZOzk1apPklVsut7uyf0HXc8C-3E9-6dJeJ08HADYIqMKaOboebmHjSYtqKLiasV1kWPsXw-Zr5I8AgWgv4AHWXAaGEpn7JbenEfrtKD1-OtZnF8hB1GeBztHf1t3AspzNxuaE0u6bzgtnz89RwkZ04iD0ls1zo3zHJdA9golAjsHwBtTSUiR1BYb8ZWg8bECddrNjrQlo1iNXkV6xX2PQvjjGe4NjH7VSFa9u_wuebWWFOl2HaPYV_MZnPDgIQVC8grmpS"/>
+<div class="flex gap-sm border-l border-outline-variant pl-sm ml-sm">
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors" data-icon="settings">settings</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-error transition-colors" data-icon="logout">logout</button>
+</div>
+</div>
+</header>
+<!-- Scrollable Canvas -->
+<main class="flex-1 overflow-y-auto p-margin-mobile md:p-margin-desktop bg-surface">
+<div class="max-w-6xl mx-auto space-y-xl">
+<!-- Search & Filters Container -->
+<section class="bg-surface-container-lowest border border-outline-variant rounded-xl p-lg flex flex-col gap-lg">
+<!-- Search Bar -->
+<div class="relative w-full">
+<span class="material-symbols-outlined absolute left-md top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full h-12 pl-12 pr-4 rounded-lg border border-outline-variant bg-surface-container-lowest font-body-md text-body-md focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary-fixed-dim transition-all" placeholder="Введите поисковый запрос..." type="text"/>
+<button class="absolute right-md top-1/2 -translate-y-1/2 flex items-center gap-xs text-primary font-body-sm text-body-sm font-medium bg-primary-fixed px-sm py-1 rounded">
+<span class="material-symbols-outlined text-sm">tune</span>
+                            Фильтры
+                        </button>
+</div>
+<!-- Advanced Filters Panel (Expanded) -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-md pt-md border-t border-outline-variant">
+<!-- Filter: Type -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-sm text-body-sm font-bold text-on-surface">Тип документа</label>
+<select class="h-10 rounded-lg border border-outline-variant bg-surface-container-lowest px-sm font-body-sm text-body-sm text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary">
+<option>Все типы</option>
+<option>Договор поставки</option>
+<option>НДА</option>
+<option>Лицензионный</option>
+</select>
+</div>
+<!-- Filter: Status -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-sm text-body-sm font-bold text-on-surface">Статус</label>
+<select class="h-10 rounded-lg border border-outline-variant bg-surface-container-lowest px-sm font-body-sm text-body-sm text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary">
+<option>Все статусы</option>
+<option>Исполнен</option>
+<option>Расторгнут</option>
+<option>Истек срок</option>
+</select>
+</div>
+<!-- Filter: Risk -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-sm text-body-sm font-bold text-on-surface">Уровень риска</label>
+<select class="h-10 rounded-lg border border-outline-variant bg-surface-container-lowest px-sm font-body-sm text-body-sm text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary">
+<option>Все уровни</option>
+<option>Высокий</option>
+<option>Средний</option>
+<option>Низкий</option>
+</select>
+</div>
+<!-- Filter: Counterparty -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-sm text-body-sm font-bold text-on-surface">Контрагент</label>
+<input class="h-10 rounded-lg border border-outline-variant bg-surface-container-lowest px-sm font-body-sm text-body-sm text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Поиск контрагента..." type="text"/>
+</div>
+<!-- Filter: Date Range -->
+<div class="flex flex-col gap-xs md:col-span-2">
+<label class="font-body-sm text-body-sm font-bold text-on-surface">Период (От - До)</label>
+<div class="flex gap-sm">
+<input class="flex-1 h-10 rounded-lg border border-outline-variant bg-surface-container-lowest px-sm font-body-sm text-body-sm text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary" type="date"/>
+<input class="flex-1 h-10 rounded-lg border border-outline-variant bg-surface-container-lowest px-sm font-body-sm text-body-sm text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary" type="date"/>
+</div>
+</div>
+<!-- Filter Actions -->
+<div class="flex gap-sm items-end md:col-span-2 justify-end">
+<button class="h-10 px-lg rounded-lg border border-outline-variant text-primary font-body-sm text-body-sm font-medium hover:bg-surface-container-low transition-colors">Сброс</button>
+<button class="h-10 px-lg rounded-lg bg-primary text-on-primary font-body-sm text-body-sm font-medium hover:bg-surface-tint transition-colors">Применить</button>
+</div>
+</div>
+</section>
+<!-- Results Section -->
+<section class="flex flex-col gap-md">
+<!-- Results Header -->
+<div class="flex justify-between items-center">
+<h3 class="font-headline-h3 text-headline-h3 text-on-surface">Найдено результатов: <span class="font-bold text-primary">127</span></h3>
+<div class="flex items-center border border-outline-variant rounded-lg bg-surface-container-lowest overflow-hidden">
+<button class="p-sm bg-primary-fixed text-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">view_list</span>
+</button>
+<button class="p-sm text-on-surface-variant hover:bg-surface-container-low flex items-center justify-center border-l border-outline-variant">
+<span class="material-symbols-outlined text-sm">grid_view</span>
+</button>
+</div>
+</div>
+<!-- Results List -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden flex flex-col">
+<!-- Header Row -->
+<div class="grid grid-cols-12 gap-sm p-sm border-b border-outline-variant bg-surface-container-low font-caption text-caption text-on-surface-variant uppercase font-bold items-center hidden md:grid">
+<div class="col-span-5">Документ</div>
+<div class="col-span-2">Статус / Риск</div>
+<div class="col-span-3">Контрагент</div>
+<div class="col-span-2 text-right">Срок действия</div>
+</div>
+<!-- Row 1 -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-sm p-md border-b border-outline-variant hover:border-primary hover:bg-surface-container-low transition-colors items-center group cursor-pointer relative">
+<div class="col-span-1 md:col-span-5 flex items-start gap-md">
+<span class="material-symbols-outlined text-primary bg-primary-fixed p-sm rounded-lg">description</span>
+<div>
+<p class="font-body-md text-body-md font-medium text-on-surface group-hover:text-primary transition-colors">Договор поставки оборудования №45-А</p>
+<p class="font-caption text-caption text-on-surface-variant">ID: DOC-2023-0891 • 12.05.2023</p>
+</div>
+</div>
+<div class="col-span-1 md:col-span-2 flex flex-row md:flex-col gap-xs items-start">
+<span class="px-2 py-1 rounded bg-secondary-container text-on-secondary-container font-caption text-caption">Исполнен</span>
+<span class="px-2 py-1 rounded bg-[#e8f5e9] text-[#2e7d32] font-caption text-caption">Низкий риск</span>
+</div>
+<div class="col-span-1 md:col-span-3 font-body-sm text-body-sm text-on-surface">
+                                ООО "ТехПромАльянс"
+                            </div>
+<div class="col-span-1 md:col-span-2 md:text-right font-body-sm text-body-sm text-on-surface-variant">
+                                Истек 15.12.2023
+                            </div>
+<!-- Mobile Action -->
+<button class="absolute top-md right-md md:hidden material-symbols-outlined text-on-surface-variant">more_vert</button>
+</div>
+<!-- Row 2 -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-sm p-md border-b border-outline-variant hover:border-primary hover:bg-surface-container-low transition-colors items-center group cursor-pointer relative">
+<div class="col-span-1 md:col-span-5 flex items-start gap-md">
+<span class="material-symbols-outlined text-primary bg-primary-fixed p-sm rounded-lg">gavel</span>
+<div>
+<p class="font-body-md text-body-md font-medium text-on-surface group-hover:text-primary transition-colors">Соглашение о неразглашении (NDA)</p>
+<p class="font-caption text-caption text-on-surface-variant">ID: DOC-2024-0012 • 10.01.2024</p>
+</div>
+</div>
+<div class="col-span-1 md:col-span-2 flex flex-row md:flex-col gap-xs items-start">
+<span class="px-2 py-1 rounded bg-secondary-container text-on-secondary-container font-caption text-caption">Архивирован</span>
+<span class="px-2 py-1 rounded bg-error-container text-on-error-container font-caption text-caption">Высокий риск</span>
+</div>
+<div class="col-span-1 md:col-span-3 font-body-sm text-body-sm text-on-surface">
+                                ЗАО "ГлобалИнвест"
+                            </div>
+<div class="col-span-1 md:col-span-2 md:text-right font-body-sm text-body-sm text-on-surface-variant">
+                                Бессрочный
+                            </div>
+<button class="absolute top-md right-md md:hidden material-symbols-outlined text-on-surface-variant">more_vert</button>
+</div>
+<!-- Row 3 -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-sm p-md hover:border-primary hover:bg-surface-container-low transition-colors items-center group cursor-pointer relative border-b border-outline-variant">
+<div class="col-span-1 md:col-span-5 flex items-start gap-md">
+<span class="material-symbols-outlined text-primary bg-primary-fixed p-sm rounded-lg">history_edu</span>
+<div>
+<p class="font-body-md text-body-md font-medium text-on-surface group-hover:text-primary transition-colors">Лицензионный договор на ПО</p>
+<p class="font-caption text-caption text-on-surface-variant">ID: DOC-2022-1104 • 05.11.2022</p>
+</div>
+</div>
+<div class="col-span-1 md:col-span-2 flex flex-row md:flex-col gap-xs items-start">
+<span class="px-2 py-1 rounded bg-surface-container-highest text-on-surface-variant font-caption text-caption">Расторгнут</span>
+<span class="px-2 py-1 rounded bg-[#fff8e1] text-[#f57f17] font-caption text-caption">Средний риск</span>
+</div>
+<div class="col-span-1 md:col-span-3 font-body-sm text-body-sm text-on-surface">
+                                ИП Смирнов А.В.
+                            </div>
+<div class="col-span-1 md:col-span-2 md:text-right font-body-sm text-body-sm text-on-surface-variant">
+                                Расторгнут 01.03.2024
+                            </div>
+<button class="absolute top-md right-md md:hidden material-symbols-outlined text-on-surface-variant">more_vert</button>
+</div>
+</div>
+<!-- Pagination (Placeholder) -->
+<div class="flex justify-between items-center mt-md text-on-surface-variant font-body-sm text-body-sm">
+<span>Показано 1-3 из 127</span>
+<div class="flex gap-xs">
+<button class="px-3 py-1 rounded border border-outline-variant hover:bg-surface-container-low disabled:opacity-50 material-symbols-outlined text-sm">chevron_left</button>
+<button class="px-3 py-1 rounded border border-outline-variant bg-primary-fixed text-primary font-medium">1</button>
+<button class="px-3 py-1 rounded border border-outline-variant hover:bg-surface-container-low">2</button>
+<button class="px-3 py-1 rounded border border-outline-variant hover:bg-surface-container-low">...</button>
+<button class="px-3 py-1 rounded border border-outline-variant hover:bg-surface-container-low material-symbols-outlined text-sm">chevron_right</button>
+</div>
+</div>
+</section>
+</div>
+<!-- Footer Footer (Minimal context) -->
+<footer class="mt-2xl pt-lg border-t border-outline-variant flex justify-between items-center pb-xl opacity-80">
+<p class="font-caption text-caption text-on-surface-variant">© 2024 AI Legal Workspace. All rights reserved.</p>
+<div class="flex gap-lg">
+<a class="font-caption text-caption text-primary hover:underline" href="#">Terms of Service</a>
+<a class="font-caption text-caption text-primary hover:underline" href="#">Privacy Policy</a>
+</div>
+</footer>
+</main>
+</div>
+</body></html>

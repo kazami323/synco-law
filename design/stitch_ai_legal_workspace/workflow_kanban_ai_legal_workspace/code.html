@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+
+<html lang="ru"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Legal Workspace - Workflow</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&amp;family=Work+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "primary-fixed-dim": "#a1c9ff",
+                    "surface": "#f8f9ff",
+                    "background": "#f8f9ff",
+                    "on-tertiary": "#ffffff",
+                    "secondary": "#5f5f58",
+                    "on-primary": "#ffffff",
+                    "tertiary": "#874f00",
+                    "tertiary-fixed-dim": "#ffb86f",
+                    "on-secondary-fixed": "#1c1c17",
+                    "on-secondary-fixed-variant": "#474741",
+                    "on-secondary-container": "#63635c",
+                    "on-primary-fixed-variant": "#004880",
+                    "surface-container-highest": "#e0e2ea",
+                    "surface-container-low": "#f1f3fb",
+                    "surface-container-lowest": "#ffffff",
+                    "on-secondary": "#ffffff",
+                    "on-tertiary-fixed": "#2c1600",
+                    "on-primary-container": "#fdfcff",
+                    "error-container": "#ffdad6",
+                    "secondary-container": "#e2e0d7",
+                    "inverse-surface": "#2d3136",
+                    "inverse-on-surface": "#eff0f8",
+                    "primary-fixed": "#d2e4ff",
+                    "outline-variant": "#c0c7d3",
+                    "surface-container": "#eceef5",
+                    "surface-tint": "#0060a8",
+                    "primary-container": "#1777c9",
+                    "tertiary-container": "#a96400",
+                    "on-surface": "#181c21",
+                    "tertiary-fixed": "#ffdcbd",
+                    "inverse-primary": "#a1c9ff",
+                    "surface-container-high": "#e6e8ef",
+                    "on-primary-fixed": "#001c38",
+                    "on-tertiary-container": "#fffbff",
+                    "surface-dim": "#d8dae1",
+                    "on-error": "#ffffff",
+                    "surface-bright": "#f8f9ff",
+                    "error": "#ba1a1a",
+                    "on-background": "#181c21",
+                    "secondary-fixed": "#e5e2da",
+                    "on-tertiary-fixed-variant": "#693c00",
+                    "surface-variant": "#e0e2ea",
+                    "on-surface-variant": "#414751",
+                    "outline": "#717783",
+                    "secondary-fixed-dim": "#c8c6bf",
+                    "primary": "#005ea4",
+                    "on-error-container": "#93000a"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "sm": "8px",
+                    "margin-mobile": "16px",
+                    "xl": "24px",
+                    "margin-desktop": "32px",
+                    "2xl": "32px",
+                    "xs": "4px",
+                    "gutter": "16px",
+                    "lg": "16px",
+                    "md": "12px"
+            },
+            "fontFamily": {
+                    "body-sm": [
+                            "Work Sans"
+                    ],
+                    "headline-h2": [
+                            "Manrope"
+                    ],
+                    "caption": [
+                            "Work Sans"
+                    ],
+                    "body-md": [
+                            "Work Sans"
+                    ],
+                    "headline-h3": [
+                            "Manrope"
+                    ],
+                    "headline-h1": [
+                            "Manrope"
+                    ],
+                    "headline-h1-mobile": [
+                            "Manrope"
+                    ]
+            },
+            "fontSize": {
+                    "body-sm": [
+                            "13px",
+                            {
+                                    "lineHeight": "20px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "headline-h2": [
+                            "18px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "caption": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "letterSpacing": "0.02em",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "body-md": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "headline-h3": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "headline-h1": [
+                            "22px",
+                            {
+                                    "lineHeight": "32px",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "headline-h1-mobile": [
+                            "20px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "500"
+                            }
+                    ]
+            }
+        },
+        },
+      }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md text-body-md h-screen flex overflow-hidden">
+<!-- SideNavBar (Desktop Only) -->
+<nav class="hidden md:flex bg-surface-container-low dark:bg-surface-dim text-primary dark:text-primary-fixed-dim font-body-sm text-body-sm fixed left-0 top-0 h-full w-[260px] border-r border-outline-variant dark:border-outline flex-col p-lg gap-sm z-20">
+<div class="mb-xl flex items-center gap-md">
+<img class="w-8 h-8 rounded-DEFAULT object-cover" data-alt="A minimalist, corporate AI legal workspace logo featuring abstract scales of justice integrated with a stylized circuitry pattern, rendered in precise, clean vector lines using primary blue and neutral grey tones on a white background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDY0WnqqNux3pVau-JxLbzpzRA7zq6m02sMze1Sz7GaRfCPxxM0Qw9bDF99ROJxuKK1-yXhbdO1LCQcj7qh7daEnQsx_9sw1XzSkRvgcieG2GmJx3i5fs3A8rbb_oF2wi51Jmr-0hYjIA7w6sxeC2eob9f7TJTsGO2RuaVS4A2D1LntrQvFr7ryX-mo4O3JeYDaZXzIBgdBaFXEyo1ZKaeKCWW1U3hy1pm05TvjR7OzxYb0FZzswjpNOW6yn4hglcSKlh_UJaEqRqTz"/>
+<div>
+<h1 class="font-headline-h3 text-headline-h3 text-primary dark:text-primary-fixed-dim">AI Legal Workspace</h1>
+<p class="font-caption text-caption text-on-surface-variant">Legal OS</p>
+</div>
+</div>
+<button class="w-full bg-[#378ADD] text-white rounded-lg h-[40px] flex items-center justify-center gap-xs font-medium mb-md hover:bg-primary transition-colors">
+<span class="material-symbols-outlined text-[18px]">add</span>
+            New Contract
+        </button>
+<div class="flex flex-col gap-xs flex-1">
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+                Dashboard
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">description</span>
+                Contracts
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">analytics</span>
+                Analysis
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">smart_toy</span>
+                Agents
+            </a>
+<a class="flex items-center gap-md px-md py-sm bg-secondary-container dark:bg-secondary text-on-secondary-container dark:text-on-secondary font-medium rounded-lg transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">account_tree</span>
+                Workflow
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">archive</span>
+                Archive
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">settings</span>
+                Settings
+            </a>
+</div>
+<div class="mt-auto flex flex-col gap-xs pt-md border-t border-outline-variant">
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">cloud_done</span>
+                System Status
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">help</span>
+                Help
+            </a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col ml-0 md:ml-[260px] bg-background w-full">
+<!-- TopNavBar -->
+<header class="bg-surface-container-lowest dark:bg-surface-dim text-primary dark:text-primary-fixed-dim font-body-md text-body-md border-b border-outline-variant dark:border-outline flex justify-between items-center w-full px-margin-desktop h-[64px] z-10 shrink-0">
+<!-- Mobile Brand (Hidden on Desktop) -->
+<div class="md:hidden flex items-center gap-md">
+<img class="w-8 h-8 rounded-DEFAULT object-cover" data-alt="A minimalist, corporate AI legal workspace logo featuring abstract scales of justice integrated with a stylized circuitry pattern." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCY4QO2xqrYh_wrwn-HhF8ZFXjwjRea3t8M9DKaHZOTb931CoQ6PABQjcpOzm9hs9ARURhCOUOTNOFvnk0OS9vEY3qFTU3XEUFiB64hisYytzDos-uIf88zxIwCoNsAnPdT-jeShaqyw_WqK_804op3mJYHej5p4NcChoop_3i7w7nKeMxznzSDebTi90NUiyrmQjMCr5GGc-rm0KwdJa6VaFJWHswJTaibcEMys6lNr7V5476ek9ihpirjKFzHF3PPvEJP2u7BhUKj"/>
+<span class="font-headline-h2-mobile text-headline-h1-mobile font-bold text-primary dark:text-primary-fixed-dim">AI Legal Workspace</span>
+</div>
+<!-- Search Bar (Left aligned on Desktop) -->
+<div class="hidden md:flex items-center bg-surface-container-low border border-outline-variant rounded-lg px-md h-[40px] w-96 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-fixed transition-all">
+<span class="material-symbols-outlined text-outline mr-sm">search</span>
+<input class="bg-transparent border-none outline-none w-full text-on-surface placeholder:text-outline font-body-sm text-body-sm focus:ring-0" placeholder="Search contracts, analysis..." type="text"/>
+</div>
+<!-- Trailing Actions -->
+<div class="flex items-center gap-lg">
+<div class="hidden md:flex items-center gap-md">
+<button class="text-on-secondary-fixed-variant hover:text-primary transition-colors flex items-center justify-center w-10 h-10 rounded-full hover:bg-surface-container-low">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<button class="text-on-secondary-fixed-variant hover:text-primary transition-colors flex items-center justify-center w-10 h-10 rounded-full hover:bg-surface-container-low">
+<span class="material-symbols-outlined">logout</span>
+</button>
+</div>
+<div class="flex items-center gap-md border-l border-outline-variant pl-lg">
+<div class="text-right hidden sm:block">
+<p class="font-headline-h3 text-headline-h3 text-on-surface">Руководитель</p>
+<p class="font-caption text-caption text-on-surface-variant">Генеральный директор</p>
+</div>
+<img class="w-10 h-10 rounded-full object-cover border border-outline-variant" data-alt="A professional headshot of a corporate executive in a modern office environment, wearing a tailored navy suit with a subtle, warm-neutral lighting background, conveying trust and authority." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBZR6nR1ikLpG1maV3kxSYDmTTa2Q2ioPXBo_tPct811kw9VwN95JTYAyKmJWZOnk3VHAFbQIbEt-UHeSKiy9uSqCL3rhg-X4AJ1IialgrORiQyA-xbcXHqVDfcVrNgy31RTDeSOXCKKss-SJEyg9QusA9wXmn3y35TPX_1B38kqTQ5yJHKTPJcHmtOJlzZhj4x12uHHcTB37cg0MDL8UBtXaCm0vHllofqKubct2l5Jn2jkrS9iIu--DISLsRvbPpS6r-0yPC_I-2O"/>
+</div>
+</div>
+</header>
+<!-- Kanban Board Canvas -->
+<main class="flex-1 overflow-x-auto overflow-y-hidden p-lg md:p-margin-desktop">
+<!-- Board Header -->
+<div class="flex justify-between items-center mb-xl">
+<h2 class="font-headline-h1 text-headline-h1 text-on-surface">Workflow Kanban</h2>
+<div class="flex gap-sm">
+<button class="bg-surface border border-outline-variant text-on-surface px-md py-sm rounded-lg font-body-sm text-body-sm hover:border-primary transition-colors flex items-center gap-xs">
+<span class="material-symbols-outlined text-[18px]">filter_list</span>
+                        Filter
+                    </button>
+</div>
+</div>
+<!-- Kanban Columns Container -->
+<div class="flex gap-lg h-[calc(100%-80px)] pb-md">
+<!-- Column: Создание -->
+<div class="flex flex-col bg-surface-container-low border border-outline-variant rounded-xl min-w-[300px] max-w-[300px] h-full">
+<div class="p-md border-b border-outline-variant flex justify-between items-center bg-surface-container-lowest rounded-t-xl">
+<h3 class="font-headline-h3 text-headline-h3 text-on-surface">Создание</h3>
+<span class="bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full font-caption text-caption">0</span>
+</div>
+<div class="flex-1 overflow-y-auto p-sm gap-sm flex flex-col">
+<!-- Empty State -->
+<div class="flex flex-col items-center justify-center h-full text-outline p-lg text-center">
+<span class="material-symbols-outlined text-[32px] mb-xs">draft</span>
+<p class="font-caption text-caption">No items in creation.</p>
+</div>
+</div>
+<div class="p-sm">
+<button class="w-full py-sm border border-dashed border-outline hover:border-primary text-outline hover:text-primary rounded-lg font-body-sm text-body-sm transition-colors flex items-center justify-center gap-xs">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                            Add Card
+                        </button>
+</div>
+</div>
+<!-- Column: Проверка ИИ -->
+<div class="flex flex-col bg-surface-container-low border border-outline-variant rounded-xl min-w-[300px] max-w-[300px] h-full">
+<div class="p-md border-b border-outline-variant flex justify-between items-center bg-surface-container-lowest rounded-t-xl border-t-[3px] border-t-primary-container">
+<h3 class="font-headline-h3 text-headline-h3 text-on-surface">Проверка ИИ</h3>
+<span class="bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full font-caption text-caption">3</span>
+</div>
+<div class="flex-1 overflow-y-auto p-sm gap-sm flex flex-col">
+<!-- Card 1 -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-md hover:border-primary transition-colors cursor-grab relative group">
+<div class="absolute top-sm right-sm text-outline opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-[16px]">drag_indicator</span>
+</div>
+<div class="flex gap-xs mb-sm">
+<span class="bg-primary/10 text-primary px-2 py-0.5 rounded-sm font-caption text-caption">NDA</span>
+<span class="bg-error/10 text-error px-2 py-0.5 rounded-sm font-caption text-caption flex items-center gap-[2px]">
+<span class="material-symbols-outlined text-[12px]">warning</span> High Risk
+                                </span>
+</div>
+<h4 class="font-body-md text-body-md font-medium text-on-surface mb-xs pr-6">TechCorp Mutual NDA</h4>
+<p class="font-caption text-caption text-on-surface-variant mb-md">Oct 24, 2024</p>
+<div class="flex items-center gap-xs border-t border-outline-variant pt-sm">
+<span class="material-symbols-outlined text-[14px] text-outline">smart_toy</span>
+<span class="font-caption text-caption text-on-surface-variant">AI Reviewing...</span>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-md hover:border-primary transition-colors cursor-grab relative group">
+<div class="absolute top-sm right-sm text-outline opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-[16px]">drag_indicator</span>
+</div>
+<div class="flex gap-xs mb-sm">
+<span class="bg-surface-variant text-on-surface-variant px-2 py-0.5 rounded-sm font-caption text-caption">MSA</span>
+<span class="bg-tertiary-container/10 text-tertiary-container px-2 py-0.5 rounded-sm font-caption text-caption">Medium Risk</span>
+</div>
+<h4 class="font-body-md text-body-md font-medium text-on-surface mb-xs pr-6">Global Logistics Master Services</h4>
+<p class="font-caption text-caption text-on-surface-variant mb-md">Oct 23, 2024</p>
+<div class="flex items-center gap-xs border-t border-outline-variant pt-sm">
+<span class="material-symbols-outlined text-[14px] text-outline">smart_toy</span>
+<span class="font-caption text-caption text-on-surface-variant">Clause Analysis</span>
+</div>
+</div>
+</div>
+<div class="p-sm">
+<button class="w-full py-sm border border-dashed border-outline hover:border-primary text-outline hover:text-primary rounded-lg font-body-sm text-body-sm transition-colors flex items-center justify-center gap-xs">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                            Add Card
+                        </button>
+</div>
+</div>
+<!-- Column: Согласование юрист -->
+<div class="flex flex-col bg-surface-container-low border border-outline-variant rounded-xl min-w-[300px] max-w-[300px] h-full opacity-70">
+<div class="p-md border-b border-outline-variant flex justify-between items-center bg-surface-container-lowest rounded-t-xl">
+<h3 class="font-headline-h3 text-headline-h3 text-on-surface">Согласование юрист</h3>
+<span class="bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full font-caption text-caption">5</span>
+</div>
+<div class="flex-1 overflow-y-auto p-sm gap-sm flex flex-col items-center justify-center">
+<span class="material-symbols-outlined text-outline text-[24px]">more_horiz</span>
+</div>
+</div>
+<!-- Column: Согласование руководитель -->
+<div class="flex flex-col bg-surface-container-low border border-outline-variant rounded-xl min-w-[300px] max-w-[300px] h-full opacity-70">
+<div class="p-md border-b border-outline-variant flex justify-between items-center bg-surface-container-lowest rounded-t-xl">
+<h3 class="font-headline-h3 text-headline-h3 text-on-surface">Согласование руководитель</h3>
+<span class="bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full font-caption text-caption">4</span>
+</div>
+<div class="flex-1 overflow-y-auto p-sm gap-sm flex flex-col items-center justify-center">
+<span class="material-symbols-outlined text-outline text-[24px]">more_horiz</span>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

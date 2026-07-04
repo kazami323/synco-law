@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+
+<html lang="ru"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Legal Workspace - Все контракты</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed-dim": "#a1c9ff",
+                        "surface": "#f8f9ff",
+                        "background": "#f8f9ff",
+                        "on-tertiary": "#ffffff",
+                        "secondary": "#5f5f58",
+                        "on-primary": "#ffffff",
+                        "tertiary": "#874f00",
+                        "tertiary-fixed-dim": "#ffb86f",
+                        "on-secondary-fixed": "#1c1c17",
+                        "on-secondary-fixed-variant": "#474741",
+                        "on-secondary-container": "#63635c",
+                        "on-primary-fixed-variant": "#004880",
+                        "surface-container-highest": "#e0e2ea",
+                        "surface-container-low": "#f1f3fb",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary-fixed": "#2c1600",
+                        "on-primary-container": "#fdfcff",
+                        "error-container": "#ffdad6",
+                        "secondary-container": "#e2e0d7",
+                        "inverse-surface": "#2d3136",
+                        "inverse-on-surface": "#eff0f8",
+                        "primary-fixed": "#d2e4ff",
+                        "outline-variant": "#c0c7d3",
+                        "surface-container": "#eceef5",
+                        "surface-tint": "#0060a8",
+                        "primary-container": "#1777c9",
+                        "tertiary-container": "#a96400",
+                        "on-surface": "#181c21",
+                        "tertiary-fixed": "#ffdcbd",
+                        "inverse-primary": "#a1c9ff",
+                        "surface-container-high": "#e6e8ef",
+                        "on-primary-fixed": "#001c38",
+                        "on-tertiary-container": "#fffbff",
+                        "surface-dim": "#d8dae1",
+                        "on-error": "#ffffff",
+                        "surface-bright": "#f8f9ff",
+                        "error": "#ba1a1a",
+                        "on-background": "#181c21",
+                        "secondary-fixed": "#e5e2da",
+                        "on-tertiary-fixed-variant": "#693c00",
+                        "surface-variant": "#e0e2ea",
+                        "on-surface-variant": "#414751",
+                        "outline": "#717783",
+                        "secondary-fixed-dim": "#c8c6bf",
+                        "primary": "#005ea4",
+                        "on-error-container": "#93000a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "margin-mobile": "16px",
+                        "xl": "24px",
+                        "margin-desktop": "32px",
+                        "2xl": "32px",
+                        "xs": "4px",
+                        "gutter": "16px",
+                        "lg": "16px",
+                        "md": "12px"
+                    },
+                    "fontFamily": {
+                        "body-sm": ["Work Sans"],
+                        "headline-h2": ["Manrope"],
+                        "caption": ["Work Sans"],
+                        "body-md": ["Work Sans"],
+                        "headline-h3": ["Manrope"],
+                        "headline-h1": ["Manrope"],
+                        "headline-h1-mobile": ["Manrope"]
+                    },
+                    "fontSize": {
+                        "body-sm": ["13px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "headline-h2": ["18px", { "lineHeight": "28px", "fontWeight": "500" }],
+                        "caption": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "400" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-h3": ["16px", { "lineHeight": "24px", "fontWeight": "500" }],
+                        "headline-h1": ["22px", { "lineHeight": "32px", "fontWeight": "500" }],
+                        "headline-h1-mobile": ["20px", { "lineHeight": "28px", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex">
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-0 h-full w-[260px] flex flex-col p-lg gap-sm border-r border-outline-variant dark:border-outline bg-surface-container-low dark:bg-surface-dim hidden md:flex z-50">
+<div class="flex items-center gap-md mb-xl">
+<div class="w-10 h-10 rounded bg-primary flex items-center justify-center text-on-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">gavel</span>
+</div>
+<div>
+<h1 class="font-headline-h3 text-headline-h3 text-primary dark:text-primary-fixed-dim">AI Legal Workspace</h1>
+<p class="font-caption text-caption text-on-surface-variant">Legal OS</p>
+</div>
+</div>
+<button class="w-full bg-primary text-on-primary font-body-md py-2 rounded-lg mb-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+<span class="material-symbols-outlined">add</span>
+            New Contract
+        </button>
+<div class="flex-1 flex flex-col gap-xs">
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out font-body-sm text-body-sm" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+                Dashboard
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg bg-secondary-container dark:bg-secondary text-on-secondary-container dark:text-on-secondary font-medium font-body-sm text-body-sm transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">description</span>
+                Contracts
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out font-body-sm text-body-sm" href="#">
+<span class="material-symbols-outlined">analytics</span>
+                Analysis
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out font-body-sm text-body-sm" href="#">
+<span class="material-symbols-outlined">smart_toy</span>
+                Agents
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out font-body-sm text-body-sm" href="#">
+<span class="material-symbols-outlined">account_tree</span>
+                Workflow
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out font-body-sm text-body-sm" href="#">
+<span class="material-symbols-outlined">archive</span>
+                Archive
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant dark:text-on-secondary-fixed-variant hover:bg-primary-fixed dark:hover:bg-primary-container hover:text-on-primary-fixed-variant transition-all duration-200 ease-in-out font-body-sm text-body-sm mt-auto" href="#">
+<span class="material-symbols-outlined">settings</span>
+                Settings
+            </a>
+</div>
+<div class="mt-auto pt-lg border-t border-outline-variant flex flex-col gap-xs">
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant transition-colors font-caption text-caption" href="#">
+<span class="material-symbols-outlined text-[16px]">cloud_done</span>
+                System Status
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant transition-colors font-caption text-caption" href="#">
+<span class="material-symbols-outlined text-[16px]">help</span>
+                Help
+            </a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col ml-0 md:ml-[260px] min-h-screen relative">
+<!-- TopNavBar (Mobile only since desktop uses sidebar for nav, but user requested layout with both, so rendering as a header strip) -->
+<header class="flex justify-between items-center w-full px-margin-desktop h-[64px] border-b border-outline-variant dark:border-outline bg-surface-container-lowest dark:bg-surface-dim sticky top-0 z-40 md:hidden">
+<div class="font-headline-h2 text-headline-h2 font-bold text-primary dark:text-primary-fixed-dim">AI Legal Workspace</div>
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined text-primary cursor-pointer hover:opacity-80 transition-opacity">search</span>
+<div class="w-8 h-8 rounded-full bg-surface-variant overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="A professional headshot of a corporate executive in a modern office setting. The lighting is bright and even, highlighting a serious yet approachable expression. The color palette features neutral grays and soft blues, aligning with a professional corporate aesthetic. The background is slightly blurred to focus on the subject." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAcpTqNbIdSD2NC9RrbtTPvJ8ryC6cTOYvvKSWYJgtwrtoE2TouEELOsBeSkwxNCYBTeaaeUaRw4RzW7nCKaxZDqlGoQ_F1MsYJbrcXTKg4ooh7nUQw_nQNVjvzNeRRCF6CSei6Kxtj_XB-TVI5jc6piVqpDZxS5q8F6SUxfWZCbmepBb0YDGJ94VA8qPDrNKdMN5zIOYca-HGdK_6FPYBmcj8uyrEvbLO4Y7p_hKb5or_Kk2xVKw_DV2P9sTA0W4kCxF8PgP_askaU"/>
+</div>
+</div>
+</header>
+<!-- Desktop Top Strip for user profile / search if SideNav handles main nav -->
+<div class="hidden md:flex justify-between items-center w-full px-margin-desktop h-[64px] border-b border-outline-variant dark:border-outline bg-surface-container-lowest dark:bg-surface-dim sticky top-0 z-40">
+<div class="flex-1 max-w-md relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface-container border border-outline-variant rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-sm text-body-sm transition-all" placeholder="Поиск контрактов..." type="text"/>
+</div>
+<div class="flex items-center gap-xl">
+<div class="flex items-center gap-sm cursor-pointer hover:opacity-80 transition-opacity">
+<span class="material-symbols-outlined text-outline">settings</span>
+</div>
+<div class="flex items-center gap-sm">
+<div class="text-right">
+<div class="font-body-md text-body-md font-medium text-on-surface">Руководитель</div>
+<div class="font-caption text-caption text-on-surface-variant">Генеральный директор</div>
+</div>
+<div class="w-10 h-10 rounded-full bg-surface-variant overflow-hidden border border-outline-variant ml-sm">
+<img class="w-full h-full object-cover" data-alt="A professional headshot of a corporate executive in a modern office setting. The lighting is bright and even, highlighting a serious yet approachable expression. The color palette features neutral grays and soft blues, aligning with a professional corporate aesthetic. The background is slightly blurred to focus on the subject." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAYHHqZD_-O-Uy5Bvf9H5p9I12zoU4A2X8LzaqJuMMX-IRxj8hljECB3iwxaOm2hquNEonITX8yMh0Akg7Oo165u5Upmbe13-JrigbNULJTFSXK797fugHBxCYYBza-J6FpZA9eVQL7O--GeNc5s6q541eCIpLxdDAA5a8VrE_1DfZtcDBAxCYhxSln7zKcrazXzvr59T8UTy3oxqP1HO6S7MoRNPHpcEOXv2W5hnZglLQ7YOhSZMqGEWQ36-IuQrXznq77ClizVnk1"/>
+</div>
+<span class="material-symbols-outlined text-outline cursor-pointer hover:text-error transition-colors ml-xs">logout</span>
+</div>
+</div>
+</div>
+<main class="flex-1 p-margin-mobile md:p-margin-desktop bg-background overflow-x-hidden">
+<div class="mb-xl flex flex-col md:flex-row md:items-center justify-between gap-md">
+<h2 class="font-headline-h1-mobile md:font-headline-h1 text-headline-h1-mobile md:text-headline-h1 text-on-surface">Все контракты</h2>
+</div>
+<!-- Filters -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-md mb-xl flex flex-wrap gap-md items-center shadow-sm">
+<div class="flex-1 min-w-[200px] relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full pl-10 pr-4 py-2 border border-outline-variant rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-sm text-body-sm" placeholder="Имя контракта или ID..." type="text"/>
+</div>
+<select class="border border-outline-variant rounded-lg py-2 pl-3 pr-8 font-body-sm text-body-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none bg-surface-container-lowest text-on-surface">
+<option value="">Тип: Все</option>
+<option value="supply">Поставка</option>
+<option value="lease">Аренда</option>
+<option value="service">Услуги</option>
+</select>
+<select class="border border-outline-variant rounded-lg py-2 pl-3 pr-8 font-body-sm text-body-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none bg-surface-container-lowest text-on-surface">
+<option value="">Статус: Все</option>
+<option value="review">На проверке</option>
+<option value="active">Активный</option>
+<option value="draft">Черновик</option>
+</select>
+<select class="border border-outline-variant rounded-lg py-2 pl-3 pr-8 font-body-sm text-body-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none bg-surface-container-lowest text-on-surface">
+<option value="">Риск: Все</option>
+<option value="low">Низкий</option>
+<option value="medium">Средний</option>
+<option value="high">Высокий</option>
+</select>
+<button class="bg-surface-variant text-on-surface-variant px-4 py-2 rounded-lg font-body-sm text-body-sm hover:bg-outline-variant/30 transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">filter_list</span>
+                    Больше
+                </button>
+</div>
+<!-- Main Table -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-outline-variant bg-surface-container-low">
+<th class="p-4 w-12"><input class="rounded border-outline text-primary focus:ring-primary" type="checkbox"/></th>
+<th class="p-4 font-caption text-caption text-on-surface-variant uppercase tracking-wider">Название</th>
+<th class="p-4 font-caption text-caption text-on-surface-variant uppercase tracking-wider">Тип</th>
+<th class="p-4 font-caption text-caption text-on-surface-variant uppercase tracking-wider">Контрагент</th>
+<th class="p-4 font-caption text-caption text-on-surface-variant uppercase tracking-wider">Риск</th>
+<th class="p-4 font-caption text-caption text-on-surface-variant uppercase tracking-wider">Статус</th>
+<th class="p-4 font-caption text-caption text-on-surface-variant uppercase tracking-wider">Дата создания</th>
+<th class="p-4 font-caption text-caption text-on-surface-variant uppercase tracking-wider">Дата обновления</th>
+<th class="p-4 w-12"></th>
+</tr>
+</thead>
+<tbody class="font-body-sm text-body-sm text-on-surface divide-y divide-outline-variant/50">
+<!-- Standard Row -->
+<tr class="hover:bg-surface-container-low transition-colors group">
+<td class="p-4"><input class="rounded border-outline text-primary focus:ring-primary" type="checkbox"/></td>
+<td class="p-4 font-medium text-primary cursor-pointer hover:underline">Договор поставки оборудования №45-A</td>
+<td class="p-4 text-on-surface-variant">Поставка</td>
+<td class="p-4">ООО "ТехноПром"</td>
+<td class="p-4">
+<span class="inline-flex items-center px-2 py-1 rounded bg-secondary-container text-on-secondary-container font-caption text-caption">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary mr-1.5"></span>
+                                        Низкий
+                                    </span>
+</td>
+<td class="p-4">
+<span class="inline-flex items-center px-2 py-1 rounded bg-primary-fixed text-on-primary-fixed font-caption text-caption border border-primary-fixed-dim">
+                                        Активный
+                                    </span>
+</td>
+<td class="p-4 text-on-surface-variant">12.10.2023</td>
+<td class="p-4 text-on-surface-variant">15.10.2023</td>
+<td class="p-4 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="text-outline hover:text-primary"><span class="material-symbols-outlined text-[20px]">more_vert</span></button>
+</td>
+</tr>
+<!-- High Risk Row -->
+<tr class="bg-error-container/20 hover:bg-error-container/30 transition-colors group">
+<td class="p-4"><input class="rounded border-outline text-primary focus:ring-primary" type="checkbox"/></td>
+<td class="p-4 font-medium text-error cursor-pointer hover:underline">Договор аренды помещения №12-B</td>
+<td class="p-4 text-on-surface-variant">Аренда</td>
+<td class="p-4">ЗАО "Недвижимость Плюс"</td>
+<td class="p-4">
+<span class="inline-flex items-center px-2 py-1 rounded bg-error/10 text-error font-caption text-caption border border-error/20">
+<span class="w-1.5 h-1.5 rounded-full bg-error mr-1.5"></span>
+                                        Высокий
+                                    </span>
+</td>
+<td class="p-4">
+<span class="inline-flex items-center px-2 py-1 rounded bg-surface-variant text-on-surface-variant font-caption text-caption border border-outline-variant">
+                                        На проверке
+                                    </span>
+</td>
+<td class="p-4 text-on-surface-variant">20.10.2023</td>
+<td class="p-4 text-on-surface-variant">21.10.2023</td>
+<td class="p-4 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="text-outline hover:text-primary"><span class="material-symbols-outlined text-[20px]">more_vert</span></button>
+</td>
+</tr>
+<!-- Standard Row -->
+<tr class="hover:bg-surface-container-low transition-colors group">
+<td class="p-4"><input class="rounded border-outline text-primary focus:ring-primary" type="checkbox"/></td>
+<td class="p-4 font-medium text-primary cursor-pointer hover:underline">Соглашение о конфиденциальности (NDA)</td>
+<td class="p-4 text-on-surface-variant">Услуги</td>
+<td class="p-4">ИП Иванов И.И.</td>
+<td class="p-4">
+<span class="inline-flex items-center px-2 py-1 rounded bg-tertiary/10 text-tertiary-container font-caption text-caption border border-tertiary/20">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary-container mr-1.5"></span>
+                                        Средний
+                                    </span>
+</td>
+<td class="p-4">
+<span class="inline-flex items-center px-2 py-1 rounded bg-surface-variant text-on-surface-variant font-caption text-caption border border-outline-variant">
+                                        Черновик
+                                    </span>
+</td>
+<td class="p-4 text-on-surface-variant">01.11.2023</td>
+<td class="p-4 text-on-surface-variant">01.11.2023</td>
+<td class="p-4 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="text-outline hover:text-primary"><span class="material-symbols-outlined text-[20px]">more_vert</span></button>
+</td>
+</tr>
+<!-- Standard Row -->
+<tr class="hover:bg-surface-container-low transition-colors group">
+<td class="p-4"><input class="rounded border-outline text-primary focus:ring-primary" type="checkbox"/></td>
+<td class="p-4 font-medium text-primary cursor-pointer hover:underline">Дополнительное соглашение №1 к №45-A</td>
+<td class="p-4 text-on-surface-variant">Поставка</td>
+<td class="p-4">ООО "ТехноПром"</td>
+<td class="p-4">
+<span class="inline-flex items-center px-2 py-1 rounded bg-secondary-container text-on-secondary-container font-caption text-caption">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary mr-1.5"></span>
+                                        Низкий
+                                    </span>
+</td>
+<td class="p-4">
+<span class="inline-flex items-center px-2 py-1 rounded bg-primary-fixed text-on-primary-fixed font-caption text-caption border border-primary-fixed-dim">
+                                        Активный
+                                    </span>
+</td>
+<td class="p-4 text-on-surface-variant">05.11.2023</td>
+<td class="p-4 text-on-surface-variant">06.11.2023</td>
+<td class="p-4 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="text-outline hover:text-primary"><span class="material-symbols-outlined text-[20px]">more_vert</span></button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Bottom Actions & Pagination -->
+<div class="border-t border-outline-variant bg-surface p-md flex flex-col md:flex-row items-center justify-between gap-md">
+<div class="flex items-center gap-md w-full md:w-auto">
+<button class="bg-primary text-on-primary font-body-sm text-body-sm px-6 py-2 rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap">
+                            Создать контракт
+                        </button>
+<!-- Bulk Actions (Hidden by default, shown when items selected. Just structurally present here) -->
+<div class="hidden md:flex items-center gap-sm border-l border-outline-variant pl-md">
+<button class="text-outline hover:text-primary transition-colors flex items-center gap-1 font-caption text-caption" title="Скачать">
+<span class="material-symbols-outlined text-[18px]">download</span>
+</button>
+<button class="text-outline hover:text-error transition-colors flex items-center gap-1 font-caption text-caption" title="Удалить">
+<span class="material-symbols-outlined text-[18px]">delete</span>
+</button>
+<button class="text-outline hover:text-primary transition-colors flex items-center gap-1 font-caption text-caption" title="Изменить статус">
+<span class="material-symbols-outlined text-[18px]">edit_note</span>
+</button>
+</div>
+</div>
+<div class="flex items-center gap-xs font-body-sm text-body-sm text-on-surface-variant">
+<button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-variant transition-colors disabled:opacity-50" disabled="">
+<span class="material-symbols-outlined text-[20px]">chevron_left</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center rounded bg-primary text-on-primary font-medium">1</button>
+<button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-variant transition-colors">2</button>
+<button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-variant transition-colors">3</button>
+<span class="w-8 h-8 flex items-center justify-center">...</span>
+<button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-variant transition-colors">12</button>
+<button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-variant transition-colors">
+<span class="material-symbols-outlined text-[20px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="mt-auto docked full-width bottom-0 border-t border-outline-variant dark:border-outline bg-surface-container-lowest dark:bg-surface-dim flex justify-between items-center px-margin-desktop py-md w-full opacity-90 z-40">
+<div class="font-caption text-caption font-bold text-secondary dark:text-secondary-fixed-dim">© 2024 AI Legal Workspace. All rights reserved.</div>
+<div class="flex items-center gap-xl font-caption text-caption text-secondary dark:text-secondary-fixed-dim">
+<a class="text-on-secondary-container dark:text-on-secondary-fixed-variant hover:text-primary transition-colors" href="#">System Status: Operational</a>
+<a class="text-on-secondary-container dark:text-on-secondary-fixed-variant hover:text-primary transition-colors" href="#">Terms of Service</a>
+<a class="text-on-secondary-container dark:text-on-secondary-fixed-variant hover:text-primary transition-colors" href="#">Privacy Policy</a>
+</div>
+</footer>
+</div>
+</body></html>
