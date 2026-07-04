@@ -52,7 +52,7 @@ uvicorn app.main:app --reload
 
 - [x] Weeks 1-2 — Backend setup, схема БД, Docker
 - [x] Weeks 3-4 — Authentication, организации, управление пользователями, аудит-лог, тесты
-- [ ] Weeks 5-6 — Contract CRUD API, MinIO, парсинг PDF/DOCX
+- [x] Weeks 5-6 — Contract CRUD API, MinIO, парсинг PDF/DOCX, версии, фронтенд контрактов
 - [ ] Weeks 7-8 — 4 AI-агента (Analyzer, Law, Risk, Draft) + оркестратор
 - [ ] Weeks 9-10 — Dashboard, frontend
 - [ ] Weeks 11-12 — Workflow, тесты, документация
