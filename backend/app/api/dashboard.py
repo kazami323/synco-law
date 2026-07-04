@@ -34,7 +34,17 @@ async def get_dashboard_metrics(
                 .filter(Contract.risk_score < 40, Contract.risk_score.isnot(None))
                 .label("low"),
                 func.count()
-                .filter(Contract.status.in_(["analyzing", "analyzed"]))
+                .filter(
+                    Contract.status.in_(
+                        [
+                            "analyzing",
+                            "analyzed",
+                            "approved",
+                            "approved_finance",
+                            "ready_to_sign",
+                        ]
+                    )
+                )
                 .label("pending"),
                 func.count().filter(Contract.status == "signed").label("signed"),
             ).where(Contract.organization_id == user.organization_id)

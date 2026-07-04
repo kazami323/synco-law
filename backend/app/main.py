@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import agents, auth, contracts, dashboard, organizations, users
+from app.api import agents, auth, contracts, dashboard, organizations, users, workflow
 from app.core.config import settings
 from app.db.base import engine
 
@@ -26,6 +26,7 @@ app.include_router(users.router)
 app.include_router(contracts.router)
 app.include_router(agents.router)
 app.include_router(dashboard.router)
+app.include_router(workflow.router)
 
 
 @app.get("/health", tags=["system"])

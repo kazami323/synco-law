@@ -1,0 +1,177 @@
+"""Workflow согласования контрактов (Weeks 9-10).
+
+Цепочка: draft → [AI-анализ] → analyzed → approved (юристы) →
+approved_finance (финансы) → ready_to_sign → signed.
+Каждый переход пишется в workflow_states и аудит-лог.
+"""
+
+import uuid
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.contracts import get_visible_contract
+from app.core.dependencies import get_current_user
+from app.core.permissions import ROLE_PERMISSIONS
+from app.db.base import get_db
+from app.db.models import User, WorkflowState
+from app.utils.audit import log_action
+
+router = APIRouter(prefix="/api", tags=["workflow"])
+
+# Действие → (из каких статусов, новый статус, требуемое право)
+ACTIONS: dict[str, dict] = {
+    "approve_legal": {
+        "from": {"draft", "analyzed"},
+        "to": "approved",
+        "permission": "approve",
+        "stage": "approved",
+    },
+    "approve_finance": {
+        "from": {"approved"},
+        "to": "approved_finance",
+        "permission": "approve_finance",
+        "stage": "approved_finance",
+    },
+    "finalize": {
+        "from": {"approved_finance"},
+        "to": "ready_to_sign",
+        "permission": "approve",
+        "stage": "ready_to_sign",
+    },
+    # Пока простая отметка о подписании; реальный E-IMZO — Weeks 11-12
+    "sign": {
+        "from": {"ready_to_sign"},
+        "to": "signed",
+        "permission": "sign",
+        "stage": "signed",
+    },
+    "reject": {
+        "from": {"analyzed", "approved", "approved_finance", "ready_to_sign"},
+        "to": "draft",
+        "permission": None,  # любой, кто может согласовывать
+        "stage": "rejected",
+    },
+}
+
+REVIEWER_PERMISSIONS = {"approve", "approve_finance", "sign"}
+
+
+def _user_can(user: User, action: str) -> bool:
+    if user.role == "admin":
+        return True
+    rights = set(ROLE_PERMISSIONS.get(user.role, []))
+    need = ACTIONS[action]["permission"]
+    if need is None:  # reject доступен любому согласующему
+        return bool(rights & REVIEWER_PERMISSIONS)
+    return need in rights
+
+
+def available_actions(user: User, status: str) -> list[str]:
+    return [
+        name
+        for name, spec in ACTIONS.items()
+        if status in spec["from"] and _user_can(user, name)
+    ]
+
+
+class TransitionRequest(BaseModel):
+    comment: str | None = None
+
+
+@router.get("/contracts/{contract_id}/workflow")
+async def get_workflow(
+    contract_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    contract = await get_visible_contract(contract_id, user, db)
+
+    rows = (
+        await db.execute(
+            select(WorkflowState, User.full_name, User.username)
+            .outerjoin(User, WorkflowState.approved_by == User.id)
+            .where(WorkflowState.contract_id == contract.id)
+            .order_by(WorkflowState.created_at)
+        )
+    ).all()
+
+    return {
+        "contract_id": str(contract.id),
+        "status": contract.status,
+        "available_actions": available_actions(user, contract.status),
+        "history": [
+            {
+                "stage": state.current_stage,
+                "comment": state.comments,
+                "at": state.approved_at,
+                "by": full_name or username,
+            }
+            for state, full_name, username in rows
+        ],
+    }
+
+
+@router.post("/contracts/{contract_id}/workflow/{action}")
+async def transition(
+    contract_id: uuid.UUID,
+    action: str,
+    request: Request,
+    data: TransitionRequest | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if action not in ACTIONS:
+        raise HTTPException(
+            status_code=404, detail=f"Неизвестное действие. Доступны: {sorted(ACTIONS)}"
+        )
+    spec = ACTIONS[action]
+    contract = await get_visible_contract(contract_id, user, db)
+
+    if not _user_can(user, action):
+        raise HTTPException(status_code=403, detail="Недостаточно прав для этого шага")
+    if contract.status not in spec["from"]:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Действие «{action}» недоступно из статуса «{contract.status}»",
+        )
+    comment = data.comment if data else None
+    if action == "reject" and not (comment and comment.strip()):
+        raise HTTPException(
+            status_code=400, detail="При отклонении обязателен комментарий"
+        )
+
+    now = datetime.now(timezone.utc)
+    old_status = contract.status
+    contract.status = spec["to"]
+    if action == "sign":
+        contract.signed_at = now
+        contract.signed_by = user.id
+
+    db.add(
+        WorkflowState(
+            contract_id=contract.id,
+            current_stage=spec["stage"],
+            approved_by=user.id,
+            approved_at=now,
+            comments=comment,
+        )
+    )
+    await log_action(
+        db,
+        action=f"workflow_{action}",
+        user_id=user.id,
+        resource_type="contract",
+        resource_id=contract.id,
+        changes={"from": old_status, "to": contract.status, "comment": comment},
+        ip_address=request.client.host if request.client else None,
+    )
+    await db.commit()
+
+    return {
+        "status": contract.status,
+        "available_actions": available_actions(user, contract.status),
+    }

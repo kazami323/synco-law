@@ -23,6 +23,7 @@ import {
 } from "@/components/ui";
 import { RiskChip, StatusChip, TypeChip } from "@/components/contract-chips";
 import { AnalysisSection } from "@/components/analysis-section";
+import { WorkflowPanel } from "@/components/workflow-panel";
 
 export default function ContractPage() {
   const { id } = useParams<{ id: string }>();
@@ -167,6 +168,10 @@ export default function ContractPage() {
           <AnalysisSection contractId={c.id} />
         </div>
 
+        <div className="space-y-6">
+        {/* Согласование */}
+        <WorkflowPanel contractId={c.id} />
+
         {/* История версий */}
         <Card className="p-6 h-fit">
           <div className="flex items-center gap-2 font-semibold mb-4">
@@ -194,6 +199,7 @@ export default function ContractPage() {
             ))}
           </div>
         </Card>
+        </div>
       </div>
 
       {editOpen && (
