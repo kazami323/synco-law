@@ -7,9 +7,11 @@ import {
   CircleAlert,
   TriangleAlert,
 } from "lucide-react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import type { ContractList, DashboardMetrics } from "@/lib/types";
 import { Card, EmptyState } from "@/components/ui";
+import { RiskChip, StatusChip, TypeChip } from "@/components/contract-chips";
 
 const KPI: {
   key: keyof DashboardMetrics;
@@ -72,12 +74,20 @@ export default function DashboardPage() {
         <Card className="xl:col-span-2 overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 bg-surface-container-low border-b border-outline-variant">
             <h2 className="font-semibold">Недавние контракты</h2>
+            <Link
+              href="/contracts"
+              className="text-sm text-primary hover:underline"
+            >
+              Смотреть все
+            </Link>
           </div>
           {contracts.data && contracts.data.items.length > 0 ? (
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-on-surface-variant">
                   <th className="px-6 py-3">Название</th>
+                  <th className="px-6 py-3">Тип</th>
+                  <th className="px-6 py-3">Риск</th>
                   <th className="px-6 py-3">Статус</th>
                   <th className="px-6 py-3">Дата</th>
                 </tr>
@@ -85,8 +95,23 @@ export default function DashboardPage() {
               <tbody>
                 {contracts.data.items.map((c) => (
                   <tr key={c.id} className="border-t border-outline-variant">
-                    <td className="px-6 py-3">{c.title}</td>
-                    <td className="px-6 py-3">{c.status}</td>
+                    <td className="px-6 py-3">
+                      <Link
+                        href={`/contracts/${c.id}`}
+                        className="text-primary font-medium hover:underline"
+                      >
+                        {c.title}
+                      </Link>
+                    </td>
+                    <td className="px-6 py-3">
+                      <TypeChip type={c.contract_type} />
+                    </td>
+                    <td className="px-6 py-3">
+                      <RiskChip score={c.risk_score} />
+                    </td>
+                    <td className="px-6 py-3">
+                      <StatusChip status={c.status} />
+                    </td>
                     <td className="px-6 py-3">
                       {new Date(c.created_at).toLocaleDateString("ru-RU")}
                     </td>
@@ -97,7 +122,7 @@ export default function DashboardPage() {
           ) : (
             <EmptyState
               title="Контрактов пока нет"
-              hint="Раздел контрактов заработает на следующем этапе разработки (Weeks 5-6)"
+              hint="Создайте первый контракт на странице «Контракты»"
             />
           )}
         </Card>

@@ -55,3 +55,29 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   }
   return res.json();
 }
+
+/** multipart/form-data запрос (загрузка файлов); Content-Type ставит браузер. */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const data = await res.json();
+      if (data.detail) {
+        detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+      }
+    } catch {
+      /* тело не JSON */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  return res.json();
+}

@@ -36,7 +36,34 @@ export interface Contract {
   status: string;
   risk_score: number | null;
   created_at: string;
+  updated_at: string;
 }
+
+export interface ContractDetail extends Contract {
+  content: string | null;
+  file_path: string | null;
+  amount: number | null;
+  currency: string;
+  created_by: string | null;
+  signed_at: string | null;
+}
+
+export interface ContractVersion {
+  id: string;
+  version_number: number;
+  changes_description: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export const CONTRACT_TYPES: Record<string, string> = {
+  purchase: "Купля-продажа",
+  lease: "Аренда",
+  service: "Подряд / услуги",
+  nda: "NDA",
+  employment: "Трудовой",
+  other: "Другое",
+};
 
 export interface ContractList {
   total: number;

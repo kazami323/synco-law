@@ -58,6 +58,15 @@ class ContractCreate(BaseModel):
     currency: str = "UZS"
 
 
+class ContractUpdate(BaseModel):
+    title: str | None = None
+    counterparty: str | None = None
+    content: str | None = None
+    amount: float | None = None
+    currency: str | None = None
+    changes_description: str | None = None
+
+
 class ContractOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -67,4 +76,24 @@ class ContractOut(BaseModel):
     counterparty: str | None = None
     status: str
     risk_score: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContractDetail(ContractOut):
+    content: str | None = None
+    file_path: str | None = None
+    amount: float | None = None
+    currency: str
+    created_by: uuid.UUID | None = None
+    signed_at: datetime | None = None
+
+
+class ContractVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    version_number: int
+    changes_description: str | None = None
+    created_by: uuid.UUID | None = None
     created_at: datetime

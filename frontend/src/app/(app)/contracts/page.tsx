@@ -1,42 +1,46 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import type { ContractList } from "@/lib/types";
-import { Button, Card, Chip, EmptyState, Select } from "@/components/ui";
-
-const STATUS_LABELS: Record<string, { label: string; tone: "success" | "warning" | "error" | "info" | "neutral" }> = {
-  draft: { label: "Черновик", tone: "neutral" },
-  analyzing: { label: "На проверке", tone: "info" },
-  analyzed: { label: "Проверен", tone: "info" },
-  approved: { label: "Согласован", tone: "success" },
-  ready_to_sign: { label: "К подписанию", tone: "warning" },
-  signed: { label: "Подписан", tone: "success" },
-  archived: { label: "В архиве", tone: "neutral" },
-};
-
-function riskChip(score: number | null) {
-  if (score === null) return <Chip tone="neutral">—</Chip>;
-  if (score > 70) return <Chip tone="error">● Высокий</Chip>;
-  if (score >= 40) return <Chip tone="warning">● Средний</Chip>;
-  return <Chip tone="success">● Низкий</Chip>;
-}
+import { Button, Card, EmptyState, Select } from "@/components/ui";
+import {
+  RiskChip,
+  STATUS_LABELS,
+  StatusChip,
+  TypeChip,
+} from "@/components/contract-chips";
+import { CreateContractModal } from "@/components/create-contract-modal";
 
 export default function ContractsPage() {
+  const router = useRouter();
   const [status, setStatus] = useState("");
+  const [q, setQ] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+
   const { data, isLoading } = useQuery({
-    queryKey: ["contracts", status],
+    queryKey: ["contracts", status, q],
     queryFn: () =>
       api<ContractList>(
-        `/api/contracts/?limit=20${status ? `&status_filter=${status}` : ""}`
+        `/api/contracts/?limit=20${status ? `&status_filter=${status}` : ""}${
+          q ? `&q=${encodeURIComponent(q)}` : ""
+        }`
       ),
   });
 
   return (
     <div className="max-w-6xl">
-      <h1 className="text-2xl font-semibold">Все контракты</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Все контракты</h1>
+        <Button onClick={() => setModalOpen(true)}>
+          <span className="flex items-center gap-2">
+            <Plus size={16} /> Создать контракт
+          </span>
+        </Button>
+      </div>
 
       {/* Панель фильтров */}
       <Card className="mt-6 p-4 flex flex-wrap items-center gap-3">
@@ -46,14 +50,16 @@ export default function ContractsPage() {
             className="absolute left-3 top-1/2 -translate-y-1/2 text-outline"
           />
           <input
-            placeholder="Имя контракта или ID..."
+            placeholder="Имя контракта или контрагент..."
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
             className="w-full h-10 pl-10 pr-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm outline-none focus:border-primary placeholder:text-outline"
           />
         </div>
         <Select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="w-44"
+          className="w-48"
         >
           <option value="">Статус: Все</option>
           {Object.entries(STATUS_LABELS).map(([value, { label }]) => (
@@ -77,51 +83,53 @@ export default function ContractsPage() {
                 <th className="px-6 py-3">Контрагент</th>
                 <th className="px-6 py-3">Риск</th>
                 <th className="px-6 py-3">Статус</th>
-                <th className="px-6 py-3">Дата создания</th>
+                <th className="px-6 py-3">Создан</th>
+                <th className="px-6 py-3">Обновлён</th>
               </tr>
             </thead>
             <tbody>
-              {data.items.map((c) => {
-                const st = STATUS_LABELS[c.status] ?? {
-                  label: c.status,
-                  tone: "neutral" as const,
-                };
-                return (
-                  <tr
-                    key={c.id}
-                    className="border-t border-outline-variant hover:bg-surface-container-low"
-                  >
-                    <td className="px-6 py-4 text-primary font-medium">
-                      {c.title}
-                    </td>
-                    <td className="px-6 py-4">
-                      <Chip tone="neutral">{c.contract_type ?? "—"}</Chip>
-                    </td>
-                    <td className="px-6 py-4">{c.counterparty ?? "—"}</td>
-                    <td className="px-6 py-4">{riskChip(c.risk_score)}</td>
-                    <td className="px-6 py-4">
-                      <Chip tone={st.tone}>{st.label}</Chip>
-                    </td>
-                    <td className="px-6 py-4">
-                      {new Date(c.created_at).toLocaleDateString("ru-RU")}
-                    </td>
-                  </tr>
-                );
-              })}
+              {data.items.map((c) => (
+                <tr
+                  key={c.id}
+                  onClick={() => router.push(`/contracts/${c.id}`)}
+                  className="border-t border-outline-variant hover:bg-surface-container-low cursor-pointer"
+                >
+                  <td className="px-6 py-4 text-primary font-medium">
+                    {c.title}
+                  </td>
+                  <td className="px-6 py-4">
+                    <TypeChip type={c.contract_type} />
+                  </td>
+                  <td className="px-6 py-4">{c.counterparty ?? "—"}</td>
+                  <td className="px-6 py-4">
+                    <RiskChip score={c.risk_score} />
+                  </td>
+                  <td className="px-6 py-4">
+                    <StatusChip status={c.status} />
+                  </td>
+                  <td className="px-6 py-4">
+                    {new Date(c.created_at).toLocaleDateString("ru-RU")}
+                  </td>
+                  <td className="px-6 py-4">
+                    {new Date(c.updated_at).toLocaleDateString("ru-RU")}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         ) : (
           <EmptyState
-            title="Контрактов пока нет"
-            hint="Создание контрактов, загрузка PDF/DOCX и AI-анализ появятся на этапе Weeks 5-8"
+            title={q || status ? "Ничего не найдено" : "Контрактов пока нет"}
+            hint={
+              q || status
+                ? "Попробуйте изменить фильтры"
+                : "Нажмите «Создать контракт», чтобы добавить первый"
+            }
           />
         )}
-        <div className="px-6 py-4 border-t border-outline-variant bg-surface-container-low">
-          <Button disabled title="Появится на этапе Weeks 5-6">
-            Создать контракт
-          </Button>
-        </div>
       </Card>
+
+      {modalOpen && <CreateContractModal onClose={() => setModalOpen(false)} />}
     </div>
   );
 }
