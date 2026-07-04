@@ -70,9 +70,10 @@ export function CreateContractModal({ onClose }: { onClose: () => void }) {
     amount: "",
     currency: "UZS",
   });
-  const [source, setSource] = useState<"file" | "text">("file");
+  const [source, setSource] = useState<"file" | "text" | "ai">("file");
   const [file, setFile] = useState<File | null>(null);
   const [content, setContent] = useState("");
+  const [aiRequirements, setAiRequirements] = useState("");
   const [error, setError] = useState("");
 
   const create = useMutation({
@@ -95,9 +96,29 @@ export function CreateContractModal({ onClose }: { onClose: () => void }) {
         form.append("file", file);
         return apiUpload<ContractDetail>("/api/contracts/upload", form);
       }
+      let finalContent = content;
+      if (source === "ai") {
+        if (!aiRequirements.trim())
+          throw new Error("Опишите требования к договору");
+        const draft = await api<{ content: string }>("/api/agents/draft", {
+          method: "POST",
+          body: {
+            contract_type: type,
+            requirements: {
+              "название": common.title,
+              "контрагент": common.counterparty,
+              "сумма": details.amount
+                ? `${details.amount} ${details.currency}`
+                : null,
+              "требования": aiRequirements,
+            },
+          },
+        });
+        finalContent = draft.content;
+      }
       return api<ContractDetail>("/api/contracts/", {
         method: "POST",
-        body: { ...common, content: content || null },
+        body: { ...common, content: finalContent || null },
       });
     },
     onSuccess: (contract) => {
@@ -215,16 +236,16 @@ export function CreateContractModal({ onClose }: { onClose: () => void }) {
 
       {step === 2 && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <button
               type="button"
               onClick={() => setSource("file")}
               className={`border rounded-xl p-3 text-left cursor-pointer ${source === "file" ? "border-primary ring-1 ring-primary" : "border-outline-variant"}`}
             >
               <FileUp size={18} className="text-primary mb-1" />
-              <div className="text-sm font-medium">Загрузить файл</div>
+              <div className="text-sm font-medium">Файл</div>
               <div className="text-xs text-on-surface-variant">
-                PDF, DOCX или TXT — текст извлечётся автоматически
+                PDF, DOCX, TXT
               </div>
             </button>
             <button
@@ -233,14 +254,25 @@ export function CreateContractModal({ onClose }: { onClose: () => void }) {
               className={`border rounded-xl p-3 text-left cursor-pointer ${source === "text" ? "border-primary ring-1 ring-primary" : "border-outline-variant"}`}
             >
               <Type size={18} className="text-primary mb-1" />
-              <div className="text-sm font-medium">Вставить текст</div>
+              <div className="text-sm font-medium">Текст</div>
               <div className="text-xs text-on-surface-variant">
-                Скопируйте текст договора в поле
+                Вставить вручную
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSource("ai")}
+              className={`border rounded-xl p-3 text-left cursor-pointer ${source === "ai" ? "border-primary ring-1 ring-primary" : "border-outline-variant"}`}
+            >
+              <Sparkles size={18} className="text-primary mb-1" />
+              <div className="text-sm font-medium">Сгенерировать AI</div>
+              <div className="text-xs text-on-surface-variant">
+                Draft Agent по требованиям
               </div>
             </button>
           </div>
 
-          {source === "file" ? (
+          {source === "file" && (
             <label className="block border-2 border-dashed border-outline-variant rounded-xl p-6 text-center cursor-pointer hover:border-primary">
               <input
                 type="file"
@@ -253,11 +285,12 @@ export function CreateContractModal({ onClose }: { onClose: () => void }) {
                 {file ? (
                   <span className="font-medium text-primary">{file.name}</span>
                 ) : (
-                  "Нажмите, чтобы выбрать файл"
+                  "Нажмите, чтобы выбрать файл — текст извлечётся автоматически"
                 )}
               </div>
             </label>
-          ) : (
+          )}
+          {source === "text" && (
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -266,11 +299,15 @@ export function CreateContractModal({ onClose }: { onClose: () => void }) {
               className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm outline-none focus:border-primary"
             />
           )}
-
-          <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-            <Sparkles size={14} />
-            Генерация контракта AI-агентом появится на этапе Weeks 7-8
-          </div>
+          {source === "ai" && (
+            <textarea
+              value={aiRequirements}
+              onChange={(e) => setAiRequirements(e.target.value)}
+              rows={6}
+              placeholder="Опишите условия: предмет, сроки, порядок оплаты, особые требования… Например: «поставка 100 ноутбуков до 01.09.2026, предоплата 30%, гарантия 24 месяца»"
+              className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm outline-none focus:border-primary"
+            />
+          )}
         </div>
       )}
 
@@ -301,7 +338,11 @@ export function CreateContractModal({ onClose }: { onClose: () => void }) {
                 create.mutate();
               }}
             >
-              {create.isPending ? "Создаём..." : "Создать контракт"}
+              {create.isPending
+                ? source === "ai"
+                  ? "Генерируем… (до минуты)"
+                  : "Создаём..."
+                : "Создать контракт"}
             </Button>
           )}
         </div>

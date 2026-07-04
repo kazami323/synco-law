@@ -7,7 +7,6 @@ import {
   Download,
   History,
   Pencil,
-  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -23,6 +22,7 @@ import {
   Modal,
 } from "@/components/ui";
 import { RiskChip, StatusChip, TypeChip } from "@/components/contract-chips";
+import { AnalysisSection } from "@/components/analysis-section";
 
 export default function ContractPage() {
   const { id } = useParams<{ id: string }>();
@@ -163,17 +163,8 @@ export default function ContractPage() {
             )}
           </Card>
 
-          {/* AI-анализ — тизер */}
-          <Card className="p-6 border-dashed">
-            <div className="flex items-center gap-2 font-semibold">
-              <Sparkles size={18} className="text-primary" />
-              AI-анализ контракта
-            </div>
-            <p className="text-sm text-on-surface-variant mt-2">
-              Проверка структуры, соответствия законодательству РУз и оценка
-              рисков появятся на этапе Weeks 7-8.
-            </p>
-          </Card>
+          {/* AI-анализ */}
+          <AnalysisSection contractId={c.id} />
         </div>
 
         {/* История версий */}
