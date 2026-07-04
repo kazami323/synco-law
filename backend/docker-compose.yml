@@ -1,0 +1,77 @@
+services:
+  postgres:
+    # pgvector/pgvector — образ postgres 15 с уже собранным расширением vector
+    # (в чистом postgres:15-alpine расширения vector нет, CREATE EXTENSION упадёт)
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_USER: legal_user
+      POSTGRES_PASSWORD: secure_password
+      POSTGRES_DB: legal_workspace
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U legal_user -d legal_workspace"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  # Elasticsearch нужен только с Phase 2 (full-text search) — вынесен в profile,
+  # чтобы не тянуть тяжёлый образ на MVP: docker compose --profile search up -d
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.3
+    profiles: ["search"]
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+
+  # Бэкенд в контейнере — по profile, для локальной разработки удобнее uvicorn с хоста:
+  # docker compose --profile app up -d --build
+  backend:
+    build: .
+    profiles: ["app"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+asyncpg://legal_user:secure_password@postgres:5432/legal_workspace
+      REDIS_URL: redis://redis:6379/0
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:
+  minio_data:
+  es_data:

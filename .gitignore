@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Env / secrets
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# Node (frontend, Phase 1 Weeks 9-10)
+node_modules/
+.next/
+
+# OS
+Thumbs.db
+.DS_Store
