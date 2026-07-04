@@ -17,7 +17,6 @@ interface WorkflowInfo {
   }[];
 }
 
-// Этапы цепочки согласования по порядку; статус контракта = пройденный этап
 const CHAIN = [
   { status: "draft", label: "Черновик" },
   { status: "analyzed", label: "AI-анализ" },
@@ -31,7 +30,6 @@ const ACTION_LABELS: Record<string, string> = {
   approve_legal: "Согласовать (юрист)",
   approve_finance: "Согласовать (финансы)",
   finalize: "Передать на подписание",
-  sign: "Подписать",
 };
 
 const STAGE_LABELS: Record<string, string> = {
@@ -39,7 +37,7 @@ const STAGE_LABELS: Record<string, string> = {
   approved_finance: "Финансовое согласование",
   ready_to_sign: "Передан на подписание",
   signed: "Подписан",
-  rejected: "Отклонён",
+  rejected: "Отклонен",
 };
 
 export function WorkflowPanel({ contractId }: { contractId: string }) {
@@ -74,7 +72,7 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
   if (!wf.data) return null;
   const { status, available_actions, history } = wf.data;
   const currentIdx = CHAIN.findIndex((s) => s.status === status);
-  const actions = available_actions.filter((a) => a !== "reject");
+  const actions = available_actions.filter((a) => a !== "reject" && a !== "sign");
   const canReject = available_actions.includes("reject");
 
   if (status === "archived") return null;
@@ -86,7 +84,6 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
         Согласование
       </div>
 
-      {/* Степпер */}
       <ol className="space-y-0">
         {CHAIN.map((step, i) => {
           const done = currentIdx >= i;
@@ -105,7 +102,9 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
                 </div>
                 {i < CHAIN.length - 1 && (
                   <div
-                    className={`w-px flex-1 min-h-4 ${done && currentIdx > i ? "bg-primary" : "bg-outline-variant"}`}
+                    className={`w-px flex-1 min-h-4 ${
+                      done && currentIdx > i ? "bg-primary" : "bg-outline-variant"
+                    }`}
                   />
                 )}
               </div>
@@ -125,9 +124,12 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
         })}
       </ol>
 
-      {error && <div className="mb-3"><ErrorNote message={error} /></div>}
+      {error && (
+        <div className="mb-3">
+          <ErrorNote message={error} />
+        </div>
+      )}
 
-      {/* Действия текущего пользователя */}
       {(actions.length > 0 || canReject) && (
         <div className="flex flex-col gap-2 border-t border-outline-variant pt-4">
           {actions.map((a) => (
@@ -156,7 +158,6 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
         </div>
       )}
 
-      {/* История согласования */}
       {history.length > 0 && (
         <div className="border-t border-outline-variant pt-4 mt-4 space-y-3">
           {history
@@ -166,7 +167,9 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
               <div key={i} className="text-sm">
                 <div className="flex items-center justify-between">
                   <span
-                    className={`font-medium ${h.stage === "rejected" ? "text-error" : ""}`}
+                    className={`font-medium ${
+                      h.stage === "rejected" ? "text-error" : ""
+                    }`}
                   >
                     {STAGE_LABELS[h.stage] ?? h.stage}
                   </span>
@@ -176,7 +179,7 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
                 </div>
                 <div className="text-xs text-on-surface-variant mt-0.5">
                   {h.by}
-                  {h.comment ? ` — ${h.comment}` : ""}
+                  {h.comment ? ` - ${h.comment}` : ""}
                 </div>
               </div>
             ))}
@@ -186,14 +189,13 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
       {rejectOpen && (
         <Modal title="Отклонить контракт" onClose={() => setRejectOpen(false)}>
           <p className="text-sm text-on-surface-variant mb-3">
-            Контракт вернётся в статус «Черновик». Укажите, что нужно
-            исправить.
+            Контракт вернется в статус «Черновик». Укажите, что нужно исправить.
           </p>
           <textarea
             value={rejectComment}
             onChange={(e) => setRejectComment(e.target.value)}
             rows={4}
-            placeholder="Причина отклонения…"
+            placeholder="Причина отклонения..."
             className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm outline-none focus:border-primary"
           />
           <div className="flex justify-end gap-2 mt-4">

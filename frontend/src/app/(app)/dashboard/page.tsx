@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
-  AlertTriangle,
+  CalendarClock,
   CheckCircle2,
   CircleAlert,
   TriangleAlert,
@@ -10,21 +10,36 @@ import {
 import Link from "next/link";
 import { api } from "@/lib/api";
 import type { ContractList, DashboardMetrics } from "@/lib/types";
-import { Card, EmptyState } from "@/components/ui";
+import { Card, Chip, EmptyState } from "@/components/ui";
 import { RiskChip, StatusChip, TypeChip } from "@/components/contract-chips";
 
+type NumericMetricKey =
+  | "total_reviewed"
+  | "high_risk"
+  | "medium_risk"
+  | "low_risk"
+  | "pending_approval"
+  | "signed"
+  | "upcoming_deadlines_count";
+
 const KPI: {
-  key: keyof DashboardMetrics;
+  key: NumericMetricKey;
   label: string;
   tone: "neutral" | "error" | "warning" | "success" | "info";
   icon?: React.ComponentType<{ size?: number; className?: string }>;
 }[] = [
-  { key: "total_reviewed", label: "Проверено контрактов", tone: "neutral" },
+  { key: "total_reviewed", label: "Проверено", tone: "neutral" },
   { key: "high_risk", label: "Высокий риск", tone: "error", icon: TriangleAlert },
   { key: "medium_risk", label: "Средний риск", tone: "warning", icon: CircleAlert },
   { key: "low_risk", label: "Низкий риск", tone: "success", icon: CheckCircle2 },
   { key: "pending_approval", label: "На согласовании", tone: "neutral" },
   { key: "signed", label: "Подписано", tone: "success" },
+  {
+    key: "upcoming_deadlines_count",
+    label: "Сроки 7 дней",
+    tone: "error",
+    icon: CalendarClock,
+  },
 ];
 
 const TONE_TEXT = {
@@ -34,6 +49,24 @@ const TONE_TEXT = {
   success: "text-success",
   info: "text-primary",
 };
+
+const DEADLINE_LABELS: Record<string, string> = {
+  payment: "Оплата",
+  delivery: "Поставка",
+  report: "Отчет",
+  other: "Другое",
+};
+
+function deadlineText(daysLeft: number) {
+  if (daysLeft < 0) return `Просрочено на ${Math.abs(daysLeft)} дн.`;
+  if (daysLeft === 0) return "Сегодня";
+  return `${daysLeft} дн.`;
+}
+
+function formatDateOnly(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("ru-RU");
+}
 
 export default function DashboardPage() {
   const metrics = useQuery({
@@ -45,19 +78,20 @@ export default function DashboardPage() {
     queryFn: () => api<ContractList>("/api/contracts/?limit=5"),
   });
 
+  const upcoming = metrics.data?.upcoming_deadlines ?? [];
+
   return (
     <div className="max-w-6xl">
       <h1 className="text-2xl font-semibold">Обзор панелей</h1>
       <p className="text-on-surface-variant text-sm mt-1">
-        Сводка по контрактам и критичные уведомления.
+        Сводка по контрактам, рискам, подписям и ближайшим срокам.
       </p>
 
-      {/* KPI-карточки */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mt-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-4 mt-6">
         {KPI.map(({ key, label, tone, icon: Icon }) => (
           <Card key={key} className="p-4">
             <div
-              className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide ${TONE_TEXT[tone]}`}
+              className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase ${TONE_TEXT[tone]}`}
             >
               {Icon && <Icon size={14} />}
               {label}
@@ -70,21 +104,26 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mt-6">
-        {/* Недавние контракты */}
         <Card className="xl:col-span-2 overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 bg-surface-container-low border-b border-outline-variant">
             <h2 className="font-semibold">Недавние контракты</h2>
-            <Link
-              href="/contracts"
-              className="text-sm text-primary hover:underline"
-            >
+            <Link href="/contracts" className="text-sm text-primary hover:underline">
               Смотреть все
             </Link>
           </div>
-          {contracts.data && contracts.data.items.length > 0 ? (
+          {contracts.isLoading ? (
+            <div className="p-6 space-y-3">
+              {[0, 1, 2].map((item) => (
+                <div
+                  key={item}
+                  className="h-14 rounded-lg bg-surface-container animate-pulse"
+                />
+              ))}
+            </div>
+          ) : contracts.data && contracts.data.items.length > 0 ? (
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs uppercase tracking-wide text-on-surface-variant">
+                <tr className="text-left text-xs uppercase text-on-surface-variant">
                   <th className="px-6 py-3">Название</th>
                   <th className="px-6 py-3">Тип</th>
                   <th className="px-6 py-3">Риск</th>
@@ -127,16 +166,55 @@ export default function DashboardPage() {
           )}
         </Card>
 
-        {/* Критичные сроки */}
-        <Card className="bg-warning-container/30 border-warning/30">
-          <div className="flex items-center gap-2 px-6 py-4">
-            <AlertTriangle size={18} className="text-warning" />
-            <h2 className="font-semibold">Критичные сроки</h2>
+        <Card className="bg-warning-container/30 border-warning/30 overflow-hidden">
+          <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-warning/20">
+            <div className="flex items-center gap-2">
+              <CalendarClock size={18} className="text-warning" />
+              <h2 className="font-semibold">Предстоящие сроки</h2>
+            </div>
+            <div className="text-2xl font-semibold text-error">
+              {metrics.isLoading ? "…" : (metrics.data?.upcoming_deadlines_count ?? 0)}
+            </div>
           </div>
-          <div className="px-6 pb-6 text-sm text-on-surface-variant">
-            Нет приближающихся сроков. Уведомления появятся, когда в системе
-            будут подписанные контракты с датами окончания.
-          </div>
+          {metrics.isLoading ? (
+            <div className="p-6 space-y-3">
+              {[0, 1, 2].map((item) => (
+                <div
+                  key={item}
+                  className="h-14 rounded-lg bg-surface-container animate-pulse"
+                />
+              ))}
+            </div>
+          ) : upcoming.length > 0 ? (
+            <div className="divide-y divide-warning/20">
+              {upcoming.map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/contracts/${item.contract_id}`}
+                  className="block px-6 py-4 hover:bg-warning-container/40"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm truncate">
+                        {item.contract_title}
+                      </div>
+                      <div className="text-xs text-on-surface-variant mt-1">
+                        {DEADLINE_LABELS[item.type] ?? item.type} ·{" "}
+                        {formatDateOnly(item.deadline_date)}
+                      </div>
+                    </div>
+                    <Chip tone={item.days_left < 7 ? "error" : "neutral"}>
+                      {deadlineText(item.days_left)}
+                    </Chip>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="px-6 py-8 text-sm text-on-surface-variant">
+              Нет приближающихся сроков.
+            </div>
+          )}
         </Card>
       </div>
     </div>

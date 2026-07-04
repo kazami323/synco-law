@@ -38,7 +38,10 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     });
   } catch {
-    throw new ApiError(0, "Сервер недоступен. Проверьте, что backend запущен.");
+    throw new ApiError(
+      0,
+      "Сервер недоступен. Проверьте, что backend запущен."
+    );
   }
 
   if (!res.ok) {
@@ -46,17 +49,17 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     try {
       const data = await res.json();
       if (data.detail) {
-        detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+        detail =
+          typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
       }
     } catch {
-      /* тело не JSON — оставляем statusText */
+      // Keep statusText when response body is not JSON.
     }
     throw new ApiError(res.status, detail);
   }
   return res.json();
 }
 
-/** multipart/form-data запрос (загрузка файлов); Content-Type ставит браузер. */
 export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   const headers: Record<string, string> = {};
   const token = getToken();
@@ -72,10 +75,11 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
     try {
       const data = await res.json();
       if (data.detail) {
-        detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+        detail =
+          typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
       }
     } catch {
-      /* тело не JSON */
+      // Keep statusText when response body is not JSON.
     }
     throw new ApiError(res.status, detail);
   }

@@ -21,10 +21,10 @@ export function StatusChip({ status }: { status: string }) {
 }
 
 export function RiskChip({ score }: { score: number | null }) {
-  if (score === null) return <Chip tone="neutral">Не оценён</Chip>;
-  if (score > 70) return <Chip tone="error">● Высокий</Chip>;
-  if (score >= 40) return <Chip tone="warning">● Средний</Chip>;
-  return <Chip tone="success">● Низкий</Chip>;
+  if (score === null) return <Chip tone="neutral">Не оценен</Chip>;
+  if (score > 70) return <Chip tone="error">Высокий</Chip>;
+  if (score >= 40) return <Chip tone="warning">Средний</Chip>;
+  return <Chip tone="success">Низкий</Chip>;
 }
 
 export function TypeChip({ type }: { type: string | null }) {

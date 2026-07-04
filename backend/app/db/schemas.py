@@ -5,7 +5,7 @@
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
@@ -87,6 +87,10 @@ class ContractDetail(ContractOut):
     currency: str
     created_by: uuid.UUID | None = None
     signed_at: datetime | None = None
+    signed_by: uuid.UUID | None = None
+    signature: str | None = None
+    signature_timestamp: datetime | None = None
+    certificate_thumbprint: str | None = None
 
 
 class ContractVersionOut(BaseModel):
@@ -97,3 +101,57 @@ class ContractVersionOut(BaseModel):
     changes_description: str | None = None
     created_by: uuid.UUID | None = None
     created_at: datetime
+
+
+class SignRequestOut(BaseModel):
+    request_id: uuid.UUID
+    hash: str
+
+
+class SignConfirmIn(BaseModel):
+    request_id: uuid.UUID | None = None
+    signature: str | None = None
+    certificate: str | None = None
+    certificate_thumbprint: str | None = None
+    pin: str | None = None
+
+
+class SignConfirmOut(BaseModel):
+    signature: str
+    timestamp: datetime
+    certificate_thumbprint: str
+
+
+class ContractDeadlineCreate(BaseModel):
+    deadline_date: date
+    type: str = "other"
+
+
+class ContractDeadlineOut(BaseModel):
+    id: uuid.UUID
+    contract_id: uuid.UUID
+    deadline_date: date
+    type: str
+    days_left: int
+    is_notified: bool
+
+
+class UpcomingDeadlineOut(BaseModel):
+    id: uuid.UUID
+    contract_id: uuid.UUID
+    contract_title: str
+    deadline_date: date
+    type: str
+    days_left: int
+
+
+class NotificationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    contract_id: uuid.UUID | None = None
+    text: str
+    read_at: datetime | None = None
+    created_at: datetime
+    contract_title: str | None = None

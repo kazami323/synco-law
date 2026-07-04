@@ -24,6 +24,8 @@ export interface DashboardMetrics {
   low_risk: number;
   pending_approval: number;
   signed: number;
+  upcoming_deadlines_count: number;
+  upcoming_deadlines: UpcomingDeadline[];
   avg_review_time: number | null;
   hours_saved: number;
 }
@@ -46,6 +48,10 @@ export interface ContractDetail extends Contract {
   currency: string;
   created_by: string | null;
   signed_at: string | null;
+  signed_by: string | null;
+  signature: string | null;
+  signature_timestamp: string | null;
+  certificate_thumbprint: string | null;
 }
 
 export interface ContractVersion {
@@ -54,6 +60,45 @@ export interface ContractVersion {
   changes_description: string | null;
   created_by: string | null;
   created_at: string;
+}
+
+export interface SignRequest {
+  request_id: string;
+  hash: string;
+}
+
+export interface SignConfirm {
+  signature: string;
+  timestamp: string;
+  certificate_thumbprint: string;
+}
+
+export interface ContractDeadline {
+  id: string;
+  contract_id: string;
+  deadline_date: string;
+  type: string;
+  days_left: number;
+  is_notified: boolean;
+}
+
+export interface UpcomingDeadline {
+  id: string;
+  contract_id: string;
+  contract_title: string;
+  deadline_date: string;
+  type: string;
+  days_left: number;
+}
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  contract_id: string | null;
+  text: string;
+  read_at: string | null;
+  created_at: string;
+  contract_title: string | null;
 }
 
 export const CONTRACT_TYPES: Record<string, string> = {

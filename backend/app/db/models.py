@@ -1,11 +1,12 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     text,
+    text as sql_text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -124,7 +126,7 @@ class Contract(Base):
         UUID(as_uuid=True), ForeignKey("users.id")
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("now()"), index=True
+        DateTime(timezone=True), server_default=sql_text("now()"), index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=datetime.utcnow
@@ -133,6 +135,10 @@ class Contract(Base):
     signed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id")
     )
+    signature: Mapped[str | None] = mapped_column(Text)
+    signature_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    signature_certificate: Mapped[str | None] = mapped_column(Text)
+    certificate_thumbprint: Mapped[str | None] = mapped_column(String(128))
 
     versions: Mapped[list["ContractVersion"]] = relationship(
         back_populates="contract", cascade="all, delete-orphan"
@@ -143,6 +149,77 @@ class Contract(Base):
     workflow_states: Mapped[list["WorkflowState"]] = relationship(
         back_populates="contract", cascade="all, delete-orphan"
     )
+    deadlines: Mapped[list["ContractDeadline"]] = relationship(
+        back_populates="contract", cascade="all, delete-orphan"
+    )
+    sign_requests: Mapped[list["SignRequest"]] = relationship(
+        back_populates="contract", cascade="all, delete-orphan"
+    )
+    notifications: Mapped[list["Notification"]] = relationship(
+        back_populates="contract", cascade="all, delete-orphan"
+    )
+
+
+class SignRequest(Base):
+    __tablename__ = "sign_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id", ondelete="CASCADE"), index=True
+    )
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    contract_hash: Mapped[str] = mapped_column(String(128), index=True)
+    status: Mapped[str] = mapped_column(String(32), server_default="pending")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    contract: Mapped[Contract] = relationship(back_populates="sign_requests")
+
+
+class ContractDeadline(Base):
+    __tablename__ = "contract_deadlines"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id", ondelete="CASCADE"), index=True
+    )
+    deadline_date: Mapped[date] = mapped_column(Date, index=True)
+    deadline_type: Mapped[str] = mapped_column("type", String(64), server_default="other")
+    is_notified: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+    contract: Mapped[Contract] = relationship(back_populates="deadlines")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), index=True
+    )
+    contract_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id", ondelete="CASCADE"), index=True
+    )
+    text: Mapped[str] = mapped_column(String(1024))
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=sql_text("now()"), index=True
+    )
+
+    contract: Mapped[Contract | None] = relationship(back_populates="notifications")
 
 
 class ContractVersion(Base):

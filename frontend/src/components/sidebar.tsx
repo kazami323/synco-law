@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Archive,
   BarChart3,
+  Bell,
   Bot,
   CircleQuestionMark,
   CloudCheck,
@@ -22,6 +23,7 @@ const NAV = [
   { href: "/analysis", label: "Анализ", icon: BarChart3 },
   { href: "/agents", label: "AI-агенты", icon: Bot },
   { href: "/workflow", label: "Согласование", icon: Workflow },
+  { href: "/notifications", label: "Уведомления", icon: Bell },
   { href: "/archive", label: "Архив", icon: Archive },
   { href: "/settings", label: "Настройки", icon: Settings },
 ];

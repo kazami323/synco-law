@@ -5,6 +5,7 @@ external) — только созданные самим пользовател�
 """
 
 import uuid
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import (
     APIRouter,
@@ -23,14 +24,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user
 from app.core.permissions import ROLE_PERMISSIONS, require_permission
 from app.db.base import get_db
-from app.db.models import Contract, ContractType, ContractVersion, User
+from app.db.models import (
+    Contract,
+    ContractDeadline,
+    ContractType,
+    ContractVersion,
+    SignRequest,
+    User,
+    WorkflowState,
+)
 from app.db.schemas import (
     ContractCreate,
+    ContractDeadlineCreate,
+    ContractDeadlineOut,
     ContractDetail,
     ContractOut,
     ContractUpdate,
     ContractVersionOut,
+    SignConfirmIn,
+    SignConfirmOut,
+    SignRequestOut,
+    UpcomingDeadlineOut,
 )
+from app.services.deadlines import add_parsed_deadlines, days_left
+from app.services.notifications import create_deadline_notifications
+from app.services.signature import contract_hash, stub_signature
 from app.utils.audit import log_action
 from app.utils.document_parser import parse_file
 from app.utils.storage import presigned_download_url, upload_file
@@ -45,6 +63,17 @@ class ContractListResponse(BaseModel):
     total: int
     page: int
     items: list[ContractOut]
+
+
+def _deadline_out(deadline: ContractDeadline, today: date | None = None) -> ContractDeadlineOut:
+    return ContractDeadlineOut(
+        id=deadline.id,
+        contract_id=deadline.contract_id,
+        deadline_date=deadline.deadline_date,
+        type=deadline.deadline_type,
+        days_left=days_left(deadline.deadline_date, today),
+        is_notified=deadline.is_notified,
+    )
 
 
 def _client_ip(request: Request) -> str | None:
@@ -123,6 +152,8 @@ async def _create_contract_row(
             created_by=user.id,
         )
     )
+    await add_parsed_deadlines(db, contract)
+    await create_deadline_notifications(db, organization_id=user.organization_id)
     await log_action(
         db,
         action="contract_created",
@@ -240,6 +271,164 @@ async def list_contracts(
     )
 
 
+@router.get("/upcoming-deadlines", response_model=list[UpcomingDeadlineOut])
+async def list_upcoming_deadlines(
+    limit: int = 20,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    org_id = _require_org(user)
+    perms = ROLE_PERMISSIONS.get(user.role, [])
+    if "view_all" not in perms and "view_assigned" not in perms:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    today = date.today()
+    window_end = today + timedelta(days=7)
+    query = (
+        select(ContractDeadline, Contract)
+        .join(Contract, ContractDeadline.contract_id == Contract.id)
+        .where(
+            Contract.organization_id == org_id,
+            ContractDeadline.deadline_date <= window_end,
+            Contract.status != "archived",
+        )
+        .order_by(ContractDeadline.deadline_date)
+        .limit(limit)
+    )
+    if "view_all" not in perms:
+        query = query.where(Contract.created_by == user.id)
+
+    rows = (await db.execute(query)).all()
+    return [
+        UpcomingDeadlineOut(
+            id=deadline.id,
+            contract_id=contract.id,
+            contract_title=contract.title,
+            deadline_date=deadline.deadline_date,
+            type=deadline.deadline_type,
+            days_left=days_left(deadline.deadline_date, today),
+        )
+        for deadline, contract in rows
+    ]
+
+
+@router.post("/{contract_id}/sign-request", response_model=SignRequestOut)
+async def request_signature(
+    contract_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("sign")),
+    db: AsyncSession = Depends(get_db),
+):
+    contract = await get_visible_contract(contract_id, user, db)
+    if contract.status != "ready_to_sign":
+        raise HTTPException(
+            status_code=409,
+            detail="Contract must be ready_to_sign before E-IMZO signing",
+        )
+
+    digest = contract_hash(contract)
+    sign_request = SignRequest(
+        contract_id=contract.id,
+        requested_by=user.id,
+        contract_hash=digest,
+    )
+    db.add(sign_request)
+    await db.flush()
+    await log_action(
+        db,
+        action="sign_request_created",
+        user_id=user.id,
+        resource_type="contract",
+        resource_id=contract.id,
+        changes={"request_id": str(sign_request.id), "hash": digest},
+        ip_address=_client_ip(request),
+    )
+    await db.commit()
+    return SignRequestOut(request_id=sign_request.id, hash=digest)
+
+
+@router.post("/{contract_id}/sign-confirm", response_model=SignConfirmOut)
+async def confirm_signature(
+    contract_id: uuid.UUID,
+    request: Request,
+    data: SignConfirmIn | None = None,
+    user: User = Depends(require_permission("sign")),
+    db: AsyncSession = Depends(get_db),
+):
+    contract = await get_visible_contract(contract_id, user, db)
+    if contract.status != "ready_to_sign":
+        raise HTTPException(
+            status_code=409,
+            detail="Contract must be ready_to_sign before E-IMZO signing",
+        )
+
+    query = select(SignRequest).where(
+        SignRequest.contract_id == contract.id,
+        SignRequest.status == "pending",
+    )
+    if data and data.request_id:
+        query = query.where(SignRequest.id == data.request_id)
+    query = query.order_by(SignRequest.created_at.desc()).limit(1)
+    sign_request = (await db.execute(query)).scalar_one_or_none()
+    if sign_request is None:
+        raise HTTPException(status_code=404, detail="Pending sign request not found")
+
+    digest = contract_hash(contract)
+    if sign_request.contract_hash != digest:
+        raise HTTPException(
+            status_code=409,
+            detail="Contract changed after sign request. Create a new sign request.",
+        )
+
+    generated_signature, generated_certificate, generated_thumbprint = stub_signature(
+        digest, sign_request.id
+    )
+    signature = data.signature if data and data.signature else generated_signature
+    certificate = data.certificate if data and data.certificate else generated_certificate
+    thumbprint = (
+        data.certificate_thumbprint
+        if data and data.certificate_thumbprint
+        else generated_thumbprint
+    )
+
+    now = datetime.now(timezone.utc)
+    old_status = contract.status
+    contract.status = "signed"
+    contract.signed_at = now
+    contract.signed_by = user.id
+    contract.signature = signature
+    contract.signature_timestamp = now
+    contract.signature_certificate = certificate
+    contract.certificate_thumbprint = thumbprint
+    sign_request.status = "confirmed"
+    sign_request.confirmed_at = now
+
+    db.add(
+        WorkflowState(
+            contract_id=contract.id,
+            current_stage="signed",
+            approved_by=user.id,
+            approved_at=now,
+            comments="E-IMZO stub signature confirmed",
+        )
+    )
+    await log_action(
+        db,
+        action="sign_confirmed",
+        user_id=user.id,
+        resource_type="contract",
+        resource_id=contract.id,
+        changes={"from": old_status, "to": contract.status, "request_id": str(sign_request.id)},
+        ip_address=_client_ip(request),
+    )
+    await db.commit()
+    return SignConfirmOut(
+        signature=signature,
+        timestamp=now,
+        certificate_thumbprint=thumbprint,
+    )
+
+
 @router.get("/{contract_id}", response_model=ContractDetail)
 async def get_contract(
     contract_id: uuid.UUID,
@@ -247,6 +436,61 @@ async def get_contract(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_visible_contract(contract_id, user, db)
+
+
+@router.get("/{contract_id}/deadlines", response_model=list[ContractDeadlineOut])
+async def get_deadlines(
+    contract_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    contract = await get_visible_contract(contract_id, user, db)
+    if await add_parsed_deadlines(db, contract):
+        await create_deadline_notifications(db, organization_id=user.organization_id)
+        await db.commit()
+
+    today = date.today()
+    result = await db.execute(
+        select(ContractDeadline)
+        .where(ContractDeadline.contract_id == contract.id)
+        .order_by(ContractDeadline.deadline_date)
+    )
+    return [_deadline_out(deadline, today) for deadline in result.scalars().all()]
+
+
+@router.post(
+    "/{contract_id}/deadlines",
+    response_model=ContractDeadlineOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_deadline(
+    contract_id: uuid.UUID,
+    data: ContractDeadlineCreate,
+    request: Request,
+    user: User = Depends(require_permission("edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    contract = await get_visible_contract(contract_id, user, db)
+    deadline = ContractDeadline(
+        contract_id=contract.id,
+        deadline_date=data.deadline_date,
+        deadline_type=data.type.strip()[:64] or "other",
+    )
+    db.add(deadline)
+    await db.flush()
+    await create_deadline_notifications(db, organization_id=user.organization_id)
+    await log_action(
+        db,
+        action="deadline_created",
+        user_id=user.id,
+        resource_type="contract",
+        resource_id=contract.id,
+        changes={"deadline_date": data.deadline_date.isoformat(), "type": data.type},
+        ip_address=_client_ip(request),
+    )
+    await db.commit()
+    await db.refresh(deadline)
+    return _deadline_out(deadline, date.today())
 
 
 @router.put("/{contract_id}", response_model=ContractDetail)
@@ -289,6 +533,10 @@ async def update_contract(
                 created_by=user.id,
             )
         )
+
+    if content_changed:
+        await add_parsed_deadlines(db, contract)
+        await create_deadline_notifications(db, organization_id=user.organization_id)
 
     await log_action(
         db,

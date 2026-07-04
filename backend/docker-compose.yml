@@ -68,6 +68,7 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      EMAIL_NOTIFY: ${EMAIL_NOTIFY:-false}
     ports:
       - "8000:8000"
 

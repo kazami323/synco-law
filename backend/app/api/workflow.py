@@ -18,6 +18,7 @@ from app.core.dependencies import get_current_user
 from app.core.permissions import ROLE_PERMISSIONS
 from app.db.base import get_db
 from app.db.models import User, WorkflowState
+from app.services.signature import contract_hash, stub_signature
 from app.utils.audit import log_action
 
 router = APIRouter(prefix="/api", tags=["workflow"])
@@ -150,6 +151,11 @@ async def transition(
     if action == "sign":
         contract.signed_at = now
         contract.signed_by = user.id
+        signature, certificate, thumbprint = stub_signature(contract_hash(contract), uuid.uuid4())
+        contract.signature = signature
+        contract.signature_timestamp = now
+        contract.signature_certificate = certificate
+        contract.certificate_thumbprint = thumbprint
 
     db.add(
         WorkflowState(

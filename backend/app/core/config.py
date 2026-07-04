@@ -38,6 +38,7 @@ class Settings(BaseSettings):
 
     # External APIs
     LEX_UZ_API_KEY: str = ""
+    EMAIL_NOTIFY: bool = False
 
     # CORS (адрес фронтенда Next.js)
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]

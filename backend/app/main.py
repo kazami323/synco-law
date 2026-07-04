@@ -1,14 +1,42 @@
+import asyncio
+from contextlib import asynccontextmanager, suppress
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import agents, auth, contracts, dashboard, organizations, users, workflow
+from app.api import agents, auth, contracts, dashboard, notifications, organizations, users, workflow
 from app.core.config import settings
-from app.db.base import engine
+from app.db.base import async_session_factory, engine
+from app.services.notifications import create_deadline_notifications
+
+
+async def _deadline_notification_loop() -> None:
+    while True:
+        try:
+            async with async_session_factory() as session:
+                await create_deadline_notifications(session)
+                await session.commit()
+        except Exception:
+            pass
+        await asyncio.sleep(24 * 60 * 60)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_deadline_notification_loop())
+    app.state.deadline_notification_task = task
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
 
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
+    lifespan=lifespan,
     description="CLM-платформа с AI-агентами для юридических отделов (Узбекистан)",
 )
 
@@ -26,6 +54,7 @@ app.include_router(users.router)
 app.include_router(contracts.router)
 app.include_router(agents.router)
 app.include_router(dashboard.router)
+app.include_router(notifications.router)
 app.include_router(workflow.router)
 
 
