@@ -8,9 +8,10 @@ CLM-платформа (Contract Lifecycle Management) с AI-агентами д
 backend/          FastAPI + SQLAlchemy async + Alembic + PostgreSQL/pgvector
 frontend/         Next.js 16 + TypeScript + Tailwind 4
 design/           Stitch-экспорт экранов и дизайн-системы
+docker-compose.yml full local production-like stack
 ```
 
-## Быстрый Старт С Нуля
+## Быстрый Старт Для Разработки
 
 Backend:
 
@@ -41,13 +42,68 @@ npm run dev
 - Health check: http://localhost:8000/health
 - MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin`)
 
+## Production-Like Local Start
+
+Полный локальный запуск из корня проекта:
+
+```bash
+docker compose up -d --build
+```
+
+Что поднимается:
+
+- PostgreSQL + pgvector
+- Redis
+- MinIO
+- backend с автоматическим `alembic upgrade head`
+- frontend production build через `next start`
+
+Проверка состояния:
+
+```bash
+docker compose ps
+curl http://localhost:8000/health
+```
+
+Опционально Elasticsearch для Phase 2:
+
+```bash
+docker compose --profile search up -d elasticsearch
+```
+
+## Demo Seed
+
+Для демо-данных без ручных QA-записей:
+
+```bash
+cd backend
+.venv\Scripts\activate
+python scripts\seed_demo.py
+```
+
+Демо-логин:
+
+```text
+demo@legal.local
+demo12345
+```
+
+Seed идемпотентный: повторный запуск обновляет демо-набор контрактов с префиксом `Demo:` и не плодит дубликаты.
+
 ## Environment
 
 Основные переменные лежат в [backend/.env.example](backend/.env.example).
 
-Live AI-анализ, чат с агентами и draft generation требуют `ANTHROPIC_API_KEY` в `backend/.env` и перезапуска backend. Без ключа backend корректно возвращает `503`, а workflow, подпись, сроки и уведомления продолжают работать.
+Важные переменные:
 
-`EMAIL_NOTIFY=false` зарезервирован для следующего этапа. Сейчас уведомления пишутся в таблицу `notifications`; email/Telegram-доставка подключается поверх того же сервиса уведомлений.
+- `ENVIRONMENT=development|test|staging|production`
+- `SECRET_KEY` должен быть сильным в production
+- `DATABASE_URL` не должен указывать на localhost в production
+- `CORS_ORIGINS` должен содержать публичный frontend origin
+- `ANTHROPIC_API_KEY` нужен для live AI-анализа, чата с агентами и draft generation
+- `EMAIL_NOTIFY=false` зарезервирован для email/Telegram уведомлений
+
+Без `ANTHROPIC_API_KEY` backend корректно возвращает `503` на AI-операциях, а workflow, подпись, сроки и уведомления продолжают работать.
 
 ## API Endpoint Summary
 
@@ -95,16 +151,14 @@ E-IMZO интеграция сделана как заглушка, готова
 9. Проверить колокольчик и страницу `/notifications`.
 10. Архивировать контракт и убедиться, что архивный контракт не попадает в upcoming deadlines.
 
-## Production / Deploy Prep
+## Production / Deploy Prep Status
 
-Следующий рабочий блок:
-
-- нормальный seed/demo режим без ручных QA-записей в БД;
-- docker compose для полного локального запуска;
-- health checks для backend, postgres, redis, minio;
-- env validation для обязательных production-переменных;
-- README “как поднять с нуля” для dev и production-like режима;
-- отсутствие моковых QA-данных в боевой БД.
+- [x] demo seed без ручных QA-записей
+- [x] root Docker Compose для полного локального запуска
+- [x] health checks для backend, postgres, redis, minio
+- [x] env validation для production-переменных
+- [x] README “как поднять с нуля”
+- [x] моковые QA-данные удалены из локальной БД
 
 ## Phase 2 Roadmap
 

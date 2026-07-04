@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "AI Legal Workspace"
     APP_VERSION: str = "0.1.0"
+    ENVIRONMENT: str = "development"
     DEBUG: bool = False
 
     # Security
@@ -42,6 +43,20 @@ class Settings(BaseSettings):
 
     # CORS (адрес фронтенда Next.js)
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+
+    def validate_runtime(self) -> None:
+        environment = self.ENVIRONMENT.lower()
+        if environment not in {"development", "test", "staging", "production"}:
+            raise RuntimeError(
+                "ENVIRONMENT must be development, test, staging, or production"
+            )
+        if environment == "production":
+            if self.SECRET_KEY == "change-me-in-production" or len(self.SECRET_KEY) < 32:
+                raise RuntimeError("Set a strong SECRET_KEY before production start")
+            if not self.CORS_ORIGINS:
+                raise RuntimeError("CORS_ORIGINS must not be empty in production")
+            if "localhost" in self.DATABASE_URL:
+                raise RuntimeError("DATABASE_URL must point to production database")
 
 
 settings = Settings()

@@ -1,7 +1,7 @@
+name: ai-legal-workspace
+
 services:
   postgres:
-    # pgvector/pgvector — образ postgres 15 с уже собранным расширением vector
-    # (в чистом postgres:15-alpine расширения vector нет, CREATE EXTENSION упадёт)
     image: pgvector/pgvector:pg15
     environment:
       POSTGRES_USER: legal_user
@@ -44,26 +44,10 @@ services:
       timeout: 5s
       retries: 10
 
-  # Elasticsearch нужен только с Phase 2 (full-text search) — вынесен в profile,
-  # чтобы не тянуть тяжёлый образ на MVP: docker compose --profile search up -d
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.3
-    profiles: ["search"]
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
-    ports:
-      - "9200:9200"
-    volumes:
-      - es_data:/usr/share/elasticsearch/data
-
-  # Бэкенд в контейнере — по profile, для локальной разработки удобнее uvicorn с хоста:
-  # docker compose --profile app up -d --build
   backend:
-    build: .
+    build:
+      context: ./backend
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
-    profiles: ["app"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,6 +57,7 @@ services:
         condition: service_healthy
     environment:
       ENVIRONMENT: development
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       DATABASE_URL: postgresql+asyncpg://legal_user:secure_password@postgres:5432/legal_workspace
       REDIS_URL: redis://redis:6379/0
       ELASTICSEARCH_URL: http://elasticsearch:9200
@@ -81,6 +66,7 @@ services:
       MINIO_SECRET_KEY: minioadmin
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       EMAIL_NOTIFY: ${EMAIL_NOTIFY:-false}
+      CORS_ORIGINS: '["http://localhost:3000"]'
     ports:
       - "8000:8000"
     healthcheck:
@@ -92,6 +78,31 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.3
+    profiles: ["search"]
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
 
 volumes:
   postgres_data:

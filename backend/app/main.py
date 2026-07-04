@@ -10,6 +10,8 @@ from app.core.config import settings
 from app.db.base import async_session_factory, engine
 from app.services.notifications import create_deadline_notifications
 
+settings.validate_runtime()
+
 
 async def _deadline_notification_loop() -> None:
     while True:
