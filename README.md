@@ -8,7 +8,16 @@ CLM-платформа (Contract Lifecycle Management) с AI-агентами д
 
 ```
 backend/          FastAPI + SQLAlchemy (async) + Alembic + PostgreSQL/pgvector
-frontend/         Next.js 14 (появится на Weeks 9-10)
+frontend/         Next.js 16 + TypeScript + Tailwind 4 (дизайн LexOS Uzbekistan)
+design/           Stitch-экспорт: 9 экранов + дизайн-система
+```
+
+## Быстрый старт (frontend)
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:3000 (нужен запущенный backend)
 ```
 
 ## Быстрый старт (backend)

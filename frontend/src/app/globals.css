@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/* Дизайн-токены LexOS Uzbekistan (design/stitch_ai_legal_workspace/lexos_uzbekistan/DESIGN.md) */
+@theme {
+  --color-surface: #f8f9ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f1f3fb;
+  --color-surface-container: #eceef5;
+  --color-surface-container-high: #e6e8ef;
+  --color-on-surface: #181c21;
+  --color-on-surface-variant: #414751;
+  --color-outline: #717783;
+  --color-outline-variant: #c0c7d3;
+
+  --color-primary: #005ea4;
+  --color-primary-hover: #1777c9;
+  --color-on-primary: #ffffff;
+  --color-primary-fixed: #d2e4ff;
+
+  --color-secondary-container: #e2e0d7;
+  --color-on-secondary-container: #63635c;
+
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-success: #1b7f4b;
+  --color-warning: #a96400;
+  --color-warning-container: #ffdcbd;
+
+  --font-heading: var(--font-manrope), sans-serif;
+  --font-body: var(--font-worksans), sans-serif;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
+  font-family: var(--font-body);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
+}
