@@ -45,6 +45,7 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectComment, setRejectComment] = useState("");
   const [error, setError] = useState("");
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   const wf = useQuery({
     queryKey: ["workflow", contractId],
@@ -52,11 +53,14 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
   });
 
   const transition = useMutation({
-    mutationFn: ({ action, comment }: { action: string; comment?: string }) =>
-      api(`/api/contracts/${contractId}/workflow/${action}`, {
+    mutationFn: ({ action, comment }: { action: string; comment?: string }) => {
+      setPendingAction(action);
+      return api(`/api/contracts/${contractId}/workflow/${action}`, {
         method: "POST",
         body: { comment: comment ?? null },
-      }),
+      });
+    },
+    onSettled: () => setPendingAction(null),
     onSuccess: () => {
       setRejectOpen(false);
       setRejectComment("");
@@ -136,6 +140,7 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
             <Button
               key={a}
               disabled={transition.isPending}
+              loading={transition.isPending && pendingAction === a}
               onClick={() => {
                 setError("");
                 transition.mutate({ action: a });
@@ -204,7 +209,8 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
             </Button>
             <Button
               variant="danger"
-              disabled={!rejectComment.trim() || transition.isPending}
+              disabled={!rejectComment.trim()}
+              loading={transition.isPending}
               onClick={() => {
                 setError("");
                 transition.mutate({

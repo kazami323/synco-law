@@ -35,11 +35,14 @@ async def create_deadline_notifications(
 ) -> int:
     current = today or date.today()
     window_end = current + timedelta(days=7)
+    # Нижняя граница: по давно прошедшим срокам уведомления не рассылаем
+    window_start = current - timedelta(days=30)
     query = (
         select(ContractDeadline, Contract)
         .join(Contract, ContractDeadline.contract_id == Contract.id)
         .where(
             ContractDeadline.deadline_date <= window_end,
+            ContractDeadline.deadline_date >= window_start,
             ContractDeadline.is_notified.is_(False),
             Contract.status != "archived",
         )

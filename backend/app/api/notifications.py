@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
@@ -43,6 +43,21 @@ async def list_notifications(
         )
         for notification, contract_title in rows
     ]
+
+
+@router.post("/read-all")
+async def read_all_notifications(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отметить все уведомления пользователя прочитанными."""
+    result = await db.execute(
+        update(Notification)
+        .where(Notification.user_id == user.id, Notification.read_at.is_(None))
+        .values(read_at=func.now())
+    )
+    await db.commit()
+    return {"marked": result.rowcount}
 
 
 @router.get("/unread-count")

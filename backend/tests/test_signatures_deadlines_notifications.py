@@ -240,3 +240,83 @@ async def test_upcoming_deadlines_endpoint_orders_by_date(client, admin_headers)
         "Sooner deadline",
         "Later deadline",
     ]
+
+
+# ---------- Фиксы ревью: мусорные даты, окно уведомлений, read-all ----------
+
+def test_parser_ignores_clause_numbers_and_junk_years():
+    from app.services.deadlines import extract_deadlines_from_text
+
+    text = (
+        "Согласно пункту 1.2.3 настоящего договора и разделу 4.5.6 "
+        "оплата производится до 15.09.2026. Версия документа 2.1.10."
+    )
+    parsed = extract_deadlines_from_text(text)
+    assert [item["deadline_date"].isoformat() for item in parsed] == ["2026-09-15"]
+
+
+def test_parser_rejects_implausible_years():
+    from app.services.deadlines import extract_deadlines_from_text
+
+    parsed = extract_deadlines_from_text("срок до 01.01.1999 и до 5.5.3000")
+    assert parsed == []
+
+
+async def test_old_deadline_creates_no_notification(client, admin_headers):
+    contract = await _create_contract(client, admin_headers, title="Old deadline")
+    old = date.today() - timedelta(days=120)
+    resp = await client.post(
+        f"/api/contracts/{contract['id']}/deadlines",
+        json={"deadline_date": old.isoformat(), "type": "payment"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 201
+
+    notifications = (
+        await client.get("/api/notifications/", headers=admin_headers)
+    ).json()
+    assert not any("Old deadline" in n["text"] for n in notifications)
+
+
+async def test_ancient_date_in_text_not_parsed_as_deadline(client, admin_headers):
+    contract = await _create_contract(
+        client,
+        admin_headers,
+        title="Legacy date in text",
+        content="Договор заключён 15.01.2020 и действует до 01.10.2026.",
+    )
+    deadlines = (
+        await client.get(
+            f"/api/contracts/{contract['id']}/deadlines", headers=admin_headers
+        )
+    ).json()
+    dates = [d["deadline_date"] for d in deadlines]
+    assert "2020-01-15" not in dates
+    assert "2026-10-01" in dates
+
+
+async def test_read_all_notifications(client, admin_headers):
+    contract = await _create_contract(client, admin_headers, title="Read all test")
+    for offset in (1, 2):
+        await client.post(
+            f"/api/contracts/{contract['id']}/deadlines",
+            json={
+                "deadline_date": (date.today() + timedelta(days=offset)).isoformat(),
+                "type": "payment",
+            },
+            headers=admin_headers,
+        )
+
+    before = (
+        await client.get("/api/notifications/unread-count", headers=admin_headers)
+    ).json()
+    assert before["count"] > 0
+
+    resp = await client.post("/api/notifications/read-all", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json()["marked"] == before["count"]
+
+    after = (
+        await client.get("/api/notifications/unread-count", headers=admin_headers)
+    ).json()
+    assert after["count"] == 0

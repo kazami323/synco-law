@@ -95,7 +95,7 @@ export function AnalysisSection({ contractId }: { contractId: string }) {
           AI-анализ контракта
         </div>
         <Button
-          disabled={run.isPending}
+          loading={run.isPending}
           onClick={() => {
             setError("");
             run.mutate();

@@ -316,14 +316,15 @@ export default function ContractPage() {
             {signError && <ErrorNote message={signError} />}
             <Button
               className="w-full"
-              disabled={!signRequestData || signConfirm.isPending}
+              disabled={!signRequestData}
+              loading={signConfirm.isPending}
               onClick={() => {
                 setSignError("");
                 signConfirm.mutate();
               }}
             >
               <span className="flex items-center justify-center gap-2">
-                <ShieldCheck size={16} />
+                {!signConfirm.isPending && <ShieldCheck size={16} />}
                 {signConfirm.isPending ? "Подписываем..." : "Подтвердить подпись"}
               </span>
             </Button>
@@ -473,7 +474,7 @@ function DeadlinesPanel({ contractId }: { contractId: string }) {
               <option value="other">Другое</option>
             </Select>
             {error && <ErrorNote message={error} />}
-            <Button type="submit" disabled={create.isPending} className="w-full">
+            <Button type="submit" loading={create.isPending} className="w-full">
               {create.isPending ? "Добавляем..." : "Добавить"}
             </Button>
           </form>

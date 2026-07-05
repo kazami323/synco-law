@@ -1,14 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
+import { Spinner } from "@/components/ui";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (loading) return;
@@ -18,7 +20,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (loading || !user || !user.organization_id) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-on-surface-variant">
+      <div className="min-h-screen flex items-center justify-center gap-3 text-on-surface-variant">
+        <Spinner className="text-primary" />
         Загрузка...
       </div>
     );
@@ -29,7 +32,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
-        <main className="flex-1 overflow-y-auto p-8">{children}</main>
+        <main className="flex-1 overflow-y-auto p-8">
+          {/* key по маршруту перезапускает анимацию появления при навигации */}
+          <div key={pathname} className="animate-fade-in-up">
+            {children}
+          </div>
+        </main>
       </div>
     </div>
   );

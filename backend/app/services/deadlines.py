@@ -1,5 +1,5 @@
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,12 +53,20 @@ def _parse_numeric_date(match: re.Match[str]) -> date | None:
     c = int(match.group("c"))
     try:
         if a > 31:
-            return date(a, b, c)
-        if c < 100:
-            c += 2000
-        return date(c, b, a)
+            parsed = date(a, b, c)
+        else:
+            if c < 100:
+                # «1.2.3» и прочие номера пунктов не считаем датами
+                if c < 20:
+                    return None
+                c += 2000
+            parsed = date(c, b, a)
     except ValueError:
         return None
+    # Отсекаем неправдоподобные годы (номера договоров, опечатки)
+    if not 2000 <= parsed.year <= 2100:
+        return None
+    return parsed
 
 
 def extract_deadlines_from_text(text: str | None) -> list[dict[str, date | str]]:
@@ -98,8 +106,27 @@ def extract_deadlines_from_text(text: str | None) -> list[dict[str, date | str]]
     return sorted(found.values(), key=lambda item: item["deadline_date"])
 
 
+# Автопарсинг добавляет только «живые» сроки: не старше месяца и не дальше
+# 10 лет — даты заключения старых договоров в тексте сроками не считаем
+PARSE_PAST_GRACE_DAYS = 30
+PARSE_FUTURE_HORIZON_DAYS = 3650
+
+
+def actionable_window(today: date | None = None) -> tuple[date, date]:
+    current = today or date.today()
+    return (
+        current - timedelta(days=PARSE_PAST_GRACE_DAYS),
+        current + timedelta(days=PARSE_FUTURE_HORIZON_DAYS),
+    )
+
+
 async def add_parsed_deadlines(db: AsyncSession, contract: Contract) -> int:
-    parsed = extract_deadlines_from_text(contract.content)
+    low, high = actionable_window()
+    parsed = [
+        item
+        for item in extract_deadlines_from_text(contract.content)
+        if low <= item["deadline_date"] <= high
+    ]
     if not parsed:
         return 0
 

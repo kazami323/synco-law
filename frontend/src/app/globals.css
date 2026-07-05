@@ -39,3 +39,25 @@ body {
 h1, h2, h3, h4 {
   font-family: var(--font-heading);
 }
+
+/* Микроанимации интерфейса */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modal-pop {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.animate-fade-in-up { animation: fade-in-up 0.3s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+.animate-fade-in { animation: fade-in 0.15s ease-out both; }
+.animate-modal-pop { animation: modal-pop 0.2s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up, .animate-fade-in, .animate-modal-pop { animation: none; }
+}

@@ -1,13 +1,46 @@
 "use client";
 
 import { X } from "lucide-react";
+import { useEffect } from "react";
+
+export function Spinner({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={`animate-spin ${className}`}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeOpacity="0.25"
+        strokeWidth="4"
+      />
+      <path
+        d="M22 12a10 10 0 0 0-10-10"
+        stroke="currentColor"
+        strokeWidth="4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 export function Button({
   variant = "primary",
   className = "",
+  loading = false,
+  disabled,
+  children,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "danger";
+  loading?: boolean;
 }) {
   const styles = {
     primary:
@@ -19,9 +52,25 @@ export function Button({
   }[variant];
   return (
     <button
-      className={`h-10 px-4 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:cursor-not-allowed ${styles} ${className}`}
+      className={`h-10 px-4 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:cursor-not-allowed active:scale-[0.98] ${styles} ${className}`}
+      disabled={disabled || loading}
       {...props}
-    />
+    >
+      {loading ? (
+        <span className="flex items-center justify-center gap-2">
+          <Spinner />
+          {children}
+        </span>
+      ) : (
+        children
+      )}
+    </button>
+  );
+}
+
+export function Skeleton({ className = "" }: { className?: string }) {
+  return (
+    <div className={`rounded-lg bg-surface-container animate-pulse ${className}`} />
   );
 }
 
@@ -109,9 +158,26 @@ export function Modal({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/30 p-4">
-      <div className="w-full max-w-md bg-surface-container-lowest rounded-xl shadow-xl border border-outline-variant">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/30 p-4 animate-fade-in"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="w-full max-w-md bg-surface-container-lowest rounded-xl shadow-xl border border-outline-variant animate-modal-pop"
+      >
         <div className="flex items-center justify-between px-6 pt-5 pb-3">
           <h3 className="text-lg font-semibold">{title}</h3>
           <button
@@ -139,14 +205,17 @@ export function ErrorNote({ message }: { message: string }) {
 export function EmptyState({
   title,
   hint,
+  action,
 }: {
   title: string;
   hint?: string;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="py-16 text-center">
       <p className="text-on-surface-variant font-medium">{title}</p>
       {hint && <p className="text-sm text-outline mt-1">{hint}</p>}
+      {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>
   );
 }

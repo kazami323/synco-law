@@ -1,8 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, Check, LogOut, Search } from "lucide-react";
+import { Bell, Check, CheckCheck, LogOut, Search } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -11,7 +12,9 @@ import { ROLE_LABELS, type Notification as AppNotification } from "@/lib/types";
 export function Header() {
   const { user, logout } = useAuth();
   const qc = useQueryClient();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   const notifications = useQuery({
     queryKey: ["notifications", "header"],
@@ -34,20 +37,35 @@ export function Header() {
     },
   });
 
+  const markAllRead = useMutation({
+    mutationFn: () => api("/api/notifications/read-all", { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+
+  function submitSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const query = search.trim();
+    router.push(query ? `/contracts?q=${encodeURIComponent(query)}` : "/contracts");
+  }
+
   return (
     <header className="h-16 shrink-0 border-b border-outline-variant bg-surface-container-lowest flex items-center gap-4 px-6">
-      <div className="flex-1 max-w-xl">
+      <form className="flex-1 max-w-xl" onSubmit={submitSearch}>
         <div className="relative">
           <Search
             size={18}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-outline"
           />
           <input
-            placeholder="Поиск контрактов..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Поиск контрактов... (Enter)"
             className="w-full h-10 pl-10 pr-3 rounded-lg bg-surface-container text-sm outline-none focus:ring-2 focus:ring-primary-fixed placeholder:text-outline"
           />
         </div>
-      </div>
+      </form>
 
       <div className="flex items-center gap-4 ml-auto">
         <div className="relative">
@@ -65,16 +83,34 @@ export function Header() {
           </button>
 
           {open && (
-            <div className="absolute right-0 top-12 w-96 max-w-[calc(100vw-2rem)] bg-surface-container-lowest border border-outline-variant rounded-xl shadow-xl z-40 overflow-hidden">
+            <>
+              {/* Клик мимо панели закрывает её */}
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setOpen(false)}
+              />
+              <div className="absolute right-0 top-12 w-96 max-w-[calc(100vw-2rem)] bg-surface-container-lowest border border-outline-variant rounded-xl shadow-xl z-40 overflow-hidden animate-modal-pop">
               <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant">
                 <div className="font-semibold">Уведомления</div>
-                <Link
-                  href="/notifications"
-                  onClick={() => setOpen(false)}
-                  className="text-sm text-primary hover:underline"
-                >
-                  Все
-                </Link>
+                <div className="flex items-center gap-3">
+                  {(unread.data?.count ?? 0) > 0 && (
+                    <button
+                      onClick={() => markAllRead.mutate()}
+                      disabled={markAllRead.isPending}
+                      title="Прочитать все"
+                      className="flex items-center gap-1 text-sm text-primary hover:underline cursor-pointer disabled:opacity-50"
+                    >
+                      <CheckCheck size={15} /> Прочитать все
+                    </button>
+                  )}
+                  <Link
+                    href="/notifications"
+                    onClick={() => setOpen(false)}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Все
+                  </Link>
+                </div>
               </div>
               <div className="max-h-96 overflow-y-auto">
                 {notifications.isLoading ? (
@@ -128,7 +164,8 @@ export function Header() {
                   </div>
                 )}
               </div>
-            </div>
+              </div>
+            </>
           )}
         </div>
 

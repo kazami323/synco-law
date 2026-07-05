@@ -2,11 +2,11 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { ContractList } from "@/lib/types";
-import { Button, Card, EmptyState, Select } from "@/components/ui";
+import { Button, Card, EmptyState, Select, Skeleton } from "@/components/ui";
 import {
   RiskChip,
   STATUS_LABELS,
@@ -16,10 +16,25 @@ import {
 import { CreateContractModal } from "@/components/create-contract-modal";
 
 export default function ContractsPage() {
+  return (
+    <Suspense>
+      <ContractsContent />
+    </Suspense>
+  );
+}
+
+function ContractsContent() {
   const router = useRouter();
+  const params = useSearchParams();
   const [status, setStatus] = useState("");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(params.get("q") ?? "");
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Поиск из шапки: /contracts?q=... обновляет поле и результаты
+  const urlQuery = params.get("q") ?? "";
+  useEffect(() => {
+    setQ(urlQuery);
+  }, [urlQuery]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["contracts", status, q],
@@ -73,7 +88,11 @@ export default function ContractsPage() {
       {/* Таблица */}
       <Card className="mt-4 overflow-hidden">
         {isLoading ? (
-          <EmptyState title="Загрузка..." />
+          <div className="p-6 space-y-3">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-12" />
+            ))}
+          </div>
         ) : data && data.items.length > 0 ? (
           <table className="w-full text-sm">
             <thead className="bg-surface-container-low">
@@ -123,7 +142,17 @@ export default function ContractsPage() {
             hint={
               q || status
                 ? "Попробуйте изменить фильтры"
-                : "Нажмите «Создать контракт», чтобы добавить первый"
+                : "Загрузите файл или создайте контракт с помощью AI"
+            }
+            action={
+              !q &&
+              !status && (
+                <Button onClick={() => setModalOpen(true)}>
+                  <span className="flex items-center gap-2">
+                    <Plus size={16} /> Создать контракт
+                  </span>
+                </Button>
+              )
             }
           />
         )}

@@ -5,6 +5,7 @@ import { FileText } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import type { Contract, ContractList } from "@/lib/types";
+import { Skeleton } from "@/components/ui";
 import { RiskChip, TypeChip } from "@/components/contract-chips";
 
 // Колонки канбана: стадия процесса → какие статусы в неё попадают
@@ -37,7 +38,15 @@ export default function WorkflowPage() {
       </p>
 
       <div className="flex gap-4 mt-6 overflow-x-auto pb-4">
-        {COLUMNS.map((col) => {
+        {contracts.isLoading &&
+          COLUMNS.map((col) => (
+            <div key={col.title} className="w-72 shrink-0 space-y-3">
+              <Skeleton className="h-12" />
+              <Skeleton className="h-28" />
+              <Skeleton className="h-28" />
+            </div>
+          ))}
+        {!contracts.isLoading && COLUMNS.map((col) => {
           const inColumn = items.filter(col.match);
           return (
             <div

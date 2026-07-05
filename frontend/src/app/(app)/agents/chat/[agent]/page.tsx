@@ -235,6 +235,7 @@ export default function AgentChatPage() {
               <Paperclip size={18} />
             </button>
             <input
+              autoFocus
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={`Сообщение для ${active.name}...`}

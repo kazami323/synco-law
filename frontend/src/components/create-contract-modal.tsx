@@ -332,7 +332,7 @@ export function CreateContractModal({ onClose }: { onClose: () => void }) {
             </Button>
           ) : (
             <Button
-              disabled={create.isPending}
+              loading={create.isPending}
               onClick={() => {
                 setError("");
                 create.mutate();
