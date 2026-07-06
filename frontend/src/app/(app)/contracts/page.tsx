@@ -1,10 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Search } from "lucide-react";
+import { FileDown, Plus, Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, apiDownload } from "@/lib/api";
 import type { ContractList } from "@/lib/types";
 import { Button, Card, EmptyState, Select, Skeleton } from "@/components/ui";
 import {
@@ -48,13 +48,28 @@ function ContractsContent() {
 
   return (
     <div className="max-w-6xl">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-semibold">Все контракты</h1>
-        <Button onClick={() => setModalOpen(true)}>
-          <span className="flex items-center gap-2">
-            <Plus size={16} /> Создать контракт
-          </span>
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={() =>
+              apiDownload(
+                "/api/contracts/export/csv",
+                `contracts_${new Date().toISOString().slice(0, 10)}.csv`
+              )
+            }
+          >
+            <span className="flex items-center gap-2">
+              <FileDown size={16} /> Экспорт CSV
+            </span>
+          </Button>
+          <Button onClick={() => setModalOpen(true)}>
+            <span className="flex items-center gap-2">
+              <Plus size={16} /> Создать контракт
+            </span>
+          </Button>
+        </div>
       </div>
 
       {/* Панель фильтров */}

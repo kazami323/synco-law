@@ -60,6 +60,23 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   return res.json();
 }
 
+/** Скачивание файла с Bearer-токеном (CSV-экспорт и т.п.). */
+export async function apiDownload(path: string, filename: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_URL}${path}`, { headers });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   const headers: Record<string, string> = {};
   const token = getToken();

@@ -237,3 +237,67 @@ async def test_dashboard_metrics_reflect_contracts(client, admin_headers):
     assert metrics["total_reviewed"] == 0
     assert metrics["signed"] == 0
     assert metrics["high_risk"] == 0
+
+
+async def test_analytics_endpoint(client, admin_headers):
+    from datetime import date
+
+    for i, (title, amount, cp) in enumerate(
+        [
+            ("Аналитика 1", 100, "ООО Альфа"),
+            ("Аналитика 2", 300, "ООО Альфа"),
+            ("Аналитика 3", 50, "ООО Бета"),
+        ]
+    ):
+        resp = await client.post(
+            "/api/contracts/",
+            json={
+                "title": title,
+                "contract_type": "purchase" if i < 2 else "nda",
+                "counterparty": cp,
+                "amount": amount,
+                "content": "Текст",
+            },
+            headers=admin_headers,
+        )
+        assert resp.status_code == 201
+
+    data = (
+        await client.get("/api/dashboard/analytics?months=3", headers=admin_headers)
+    ).json()
+    assert len(data["months"]) == 3
+    assert data["months"][-1]["month"] == date.today().strftime("%Y-%m")
+    assert data["months"][-1]["created"] == 3
+    assert data["totals"]["contracts"] == 3
+    assert data["risk"]["unscored"] == 3
+
+    types = {t["type"]: t["count"] for t in data["by_type"]}
+    assert types == {"purchase": 2, "nda": 1}
+
+    top = data["top_counterparties"]
+    assert top[0]["counterparty"] == "ООО Альфа"
+    assert top[0]["total_amount"] == 400.0
+
+
+async def test_export_csv(client, admin_headers):
+    resp = await client.post(
+        "/api/contracts/",
+        json={
+            "title": "Экспортный договор",
+            "contract_type": "purchase",
+            "counterparty": "ООО Экспорт",
+            "amount": 1500000.5,
+        },
+        headers=admin_headers,
+    )
+    assert resp.status_code == 201
+
+    resp = await client.get("/api/contracts/export/csv", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert "attachment" in resp.headers["content-disposition"]
+
+    text = resp.content.decode("utf-8-sig")  # BOM срезается
+    lines = text.strip().splitlines()
+    assert lines[0].startswith("ID;Название;Тип")
+    assert any("Экспортный договор" in line and "1500000,50" in line for line in lines)

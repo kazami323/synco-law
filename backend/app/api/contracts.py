@@ -4,6 +4,8 @@
 external) — только созданные самим пользователем.
 """
 
+import csv
+import io
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
@@ -14,6 +16,7 @@ from fastapi import (
     Form,
     HTTPException,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -270,6 +273,65 @@ async def list_contracts(
     )
     return ContractListResponse(
         total=total, page=page, items=list(result.scalars().all())
+    )
+
+
+@router.get("/export/csv")
+async def export_registry_csv(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Реестр контрактов в CSV (UTF-8 BOM, ';' — открывается в Excel/1С)."""
+    org_id = _require_org(user)
+    perms = ROLE_PERMISSIONS.get(user.role, [])
+    if "view_all" not in perms and "view_assigned" not in perms:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    query = select(Contract).where(Contract.organization_id == org_id)
+    if "view_all" not in perms:
+        query = query.where(Contract.created_by == user.id)
+    rows = (
+        (await db.execute(query.order_by(Contract.created_at))).scalars().all()
+    )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter=";", lineterminator="\r\n")
+    writer.writerow(
+        [
+            "ID",
+            "Название",
+            "Тип",
+            "Контрагент",
+            "Сумма",
+            "Валюта",
+            "Статус",
+            "Риск",
+            "Создан",
+            "Подписан",
+        ]
+    )
+    for c in rows:
+        writer.writerow(
+            [
+                str(c.id),
+                c.title,
+                c.contract_type or "",
+                c.counterparty or "",
+                f"{c.amount:.2f}".replace(".", ",") if c.amount is not None else "",
+                c.currency,
+                c.status,
+                c.risk_score if c.risk_score is not None else "",
+                c.created_at.strftime("%d.%m.%Y") if c.created_at else "",
+                c.signed_at.strftime("%d.%m.%Y") if c.signed_at else "",
+            ]
+        )
+
+    csv_bytes = "﻿" + buffer.getvalue()  # BOM для кириллицы в Excel
+    filename = f"contracts_{date.today().isoformat()}.csv"
+    return Response(
+        content=csv_bytes.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
