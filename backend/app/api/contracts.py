@@ -48,6 +48,7 @@ from app.db.schemas import (
 )
 from app.services.deadlines import add_parsed_deadlines, days_left
 from app.services.notifications import create_deadline_notifications
+from app.services import search as search_service
 from app.services.signature import contract_hash, stub_signature
 from app.utils.audit import log_action
 from app.utils.document_parser import parse_file
@@ -165,6 +166,7 @@ async def _create_contract_row(
     )
     await db.commit()
     await db.refresh(contract)
+    await search_service.index_contract(contract)
     return contract
 
 
@@ -422,6 +424,7 @@ async def confirm_signature(
         ip_address=_client_ip(request),
     )
     await db.commit()
+    await search_service.index_contract(contract)
     return SignConfirmOut(
         signature=signature,
         timestamp=now,
@@ -549,6 +552,7 @@ async def update_contract(
     )
     await db.commit()
     await db.refresh(contract)
+    await search_service.index_contract(contract)
     return contract
 
 
@@ -571,6 +575,7 @@ async def archive_contract(
         ip_address=_client_ip(request),
     )
     await db.commit()
+    await search_service.index_contract(contract)
     return {"message": "Contract archived"}
 
 

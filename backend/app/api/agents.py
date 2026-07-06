@@ -15,6 +15,7 @@ from app.db.base import get_db
 from app.db.models import AgentResult, User
 from app.agents.chat import AGENT_PROMPTS, agent_chat
 from app.agents.orchestrator import ContractAnalysisOrchestrator
+from app.services import search as search_service
 from app.utils.audit import log_action
 from app.utils.document_parser import parse_file
 from app.utils.llm import require_api_key
@@ -67,6 +68,7 @@ async def trigger_analysis(
         ip_address=request.client.host if request.client else None,
     )
     await db.commit()
+    await search_service.index_contract(contract)
     return report
 
 

@@ -26,6 +26,16 @@ def _ensure_test_db() -> None:
     conn.close()
 
 
+@pytest.fixture(autouse=True)
+def _no_search_indexing(monkeypatch):
+    """Тесты не должны писать в боевой Elasticsearch-индекс."""
+
+    async def noop(contract) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.search.index_contract", noop)
+
+
 @pytest.fixture
 async def db_factory():
     """Пересоздаёт схему в тестовой БД и отдаёт фабрику сессий."""

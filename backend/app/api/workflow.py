@@ -18,6 +18,7 @@ from app.core.dependencies import get_current_user
 from app.core.permissions import ROLE_PERMISSIONS
 from app.db.base import get_db
 from app.db.models import User, WorkflowState
+from app.services import search as search_service
 from app.services.signature import contract_hash, stub_signature
 from app.utils.audit import log_action
 
@@ -176,6 +177,7 @@ async def transition(
         ip_address=request.client.host if request.client else None,
     )
     await db.commit()
+    await search_service.index_contract(contract)
 
     return {
         "status": contract.status,

@@ -6,10 +6,21 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import agents, auth, contracts, dashboard, notifications, organizations, users, workflow
+from app.api import (
+    agents,
+    auth,
+    contracts,
+    dashboard,
+    notifications,
+    organizations,
+    search,
+    users,
+    workflow,
+)
 from app.core.config import settings
 from app.db.base import async_session_factory, engine
 from app.services.notifications import create_deadline_notifications
+from app.services.search import ensure_index
 
 settings.validate_runtime()
 
@@ -31,6 +42,7 @@ async def _deadline_notification_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await ensure_index()  # без ES поиск работает через SQL fallback
     task = asyncio.create_task(_deadline_notification_loop())
     app.state.deadline_notification_task = task
     try:
@@ -63,6 +75,7 @@ app.include_router(agents.router)
 app.include_router(dashboard.router)
 app.include_router(notifications.router)
 app.include_router(workflow.router)
+app.include_router(search.router)
 
 
 @app.get("/health", tags=["system"])
