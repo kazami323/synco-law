@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, Plus, Scale, Shield, UserCog } from "lucide-react";
+import { BadgeCheck, Eye, Plus, Scale, Shield, UserCog } from "lucide-react";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -213,8 +213,65 @@ export default function SettingsPage() {
         </div>
       </Card>
 
+      {/* Комплаенс-политики (Phase 2) */}
+      {canManage && org.data && <PoliciesCard org={org.data} />}
+
       {modalOpen && <AddUserModal onClose={() => setModalOpen(false)} />}
     </div>
+  );
+}
+
+function PoliciesCard({ org }: { org: Organization }) {
+  const qc = useQueryClient();
+  const [text, setText] = useState(org.compliance_policies ?? "");
+  const [saved, setSaved] = useState(false);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api<Organization>("/api/organizations/me", {
+        method: "PUT",
+        body: { compliance_policies: text },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org"] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    },
+  });
+
+  return (
+    <Card className="mt-6 p-6">
+      <div className="flex items-center gap-2 font-semibold">
+        <BadgeCheck size={18} className="text-primary" />
+        Комплаенс-политики организации
+      </div>
+      <p className="text-sm text-on-surface-variant mt-1 mb-4">
+        Внутренние правила компании (лимиты предоплаты, запрещённые условия,
+        требования к контрагентам). Compliance Agent проверяет каждый контракт
+        по этим политикам при AI-анализе.
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={7}
+        placeholder={
+          "Например:\n1. Предоплата поставщикам — не более 30%.\n2. Договоры дороже 500 млн UZS — только с банковской гарантией.\n3. Бессрочные договоры запрещены.\n4. Споры — только в судах Узбекистана."
+        }
+        className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm outline-none focus:border-primary placeholder:text-outline"
+      />
+      <div className="flex items-center justify-end gap-3 mt-3">
+        {saved && (
+          <span className="text-sm text-success">Сохранено</span>
+        )}
+        <Button
+          loading={save.isPending}
+          disabled={text === (org.compliance_policies ?? "")}
+          onClick={() => save.mutate()}
+        >
+          Сохранить политики
+        </Button>
+      </div>
+    </Card>
   );
 }
 

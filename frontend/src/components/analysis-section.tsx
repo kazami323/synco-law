@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Gavel, ListChecks, ShieldAlert, Sparkles } from "lucide-react";
+import { BadgeCheck, Gavel, ListChecks, ShieldAlert, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { Button, Card, Chip, ErrorNote } from "@/components/ui";
@@ -38,12 +38,25 @@ interface RiskResult {
   recommendation?: string;
 }
 
+interface ComplianceResult {
+  violations?: {
+    policy: string;
+    description: string;
+    severity: string;
+    recommendation?: string;
+  }[];
+  compliance_score?: number;
+  status?: string;
+  summary?: string;
+}
+
 interface AnalysisData {
   analyzed_at: string | null;
   analysis: {
     contract_analyzer?: AnalyzerResult;
     law_agent?: LawResult;
     risk_agent?: RiskResult;
+    compliance_agent?: ComplianceResult;
   };
 }
 
@@ -86,6 +99,7 @@ export function AnalysisSection({ contractId }: { contractId: string }) {
   const risk = a?.risk_agent;
   const law = a?.law_agent;
   const analyzer = a?.contract_analyzer;
+  const compliance = a?.compliance_agent;
 
   return (
     <Card className="p-6">
@@ -262,6 +276,54 @@ export function AnalysisSection({ contractId }: { contractId: string }) {
                   будет подключена при наличии API-ключа.
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Внутренние политики */}
+          {compliance && (
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold mb-3">
+                <BadgeCheck size={16} className="text-primary" /> Внутренние
+                политики
+                {compliance.status && COMPLIANCE[compliance.status] && (
+                  <Chip tone={COMPLIANCE[compliance.status].tone}>
+                    {COMPLIANCE[compliance.status].label}
+                  </Chip>
+                )}
+                {typeof compliance.compliance_score === "number" && (
+                  <span className="text-xs text-on-surface-variant font-normal">
+                    {compliance.compliance_score}/100
+                  </span>
+                )}
+              </div>
+              {compliance.summary && (
+                <p className="text-sm text-on-surface-variant mb-3">
+                  {compliance.summary}
+                </p>
+              )}
+              <ul className="space-y-2">
+                {compliance.violations?.map((v, i) => (
+                  <li
+                    key={i}
+                    className="text-sm border border-outline-variant rounded-lg px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Chip tone={SEVERITY_TONE[v.severity] ?? "info"}>
+                        {v.severity}
+                      </Chip>
+                      <span className="text-xs text-on-surface-variant">
+                        {v.policy}
+                      </span>
+                    </div>
+                    <div className="mt-1.5">{v.description}</div>
+                    {v.recommendation && (
+                      <div className="text-xs text-on-surface-variant mt-1">
+                        Рекомендация: {v.recommendation}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>

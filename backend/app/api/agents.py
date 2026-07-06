@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.dependencies import get_current_user
 from app.core.permissions import require_permission
 from app.db.base import get_db
-from app.db.models import AgentResult, User
+from app.db.models import AgentResult, Organization, User
 from app.agents.chat import AGENT_PROMPTS, agent_chat
 from app.agents.orchestrator import ContractAnalysisOrchestrator
 from app.services import search as search_service
@@ -32,7 +32,8 @@ async def trigger_analysis(
     user: User = Depends(require_permission("edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Запустить полный AI-анализ: структура + закон + риски."""
+    """Полный AI-анализ: структура + закон + риски (+ комплаенс, если
+    у организации заданы внутренние политики)."""
     require_api_key()
     contract = await get_visible_contract(contract_id, user, db)
     if not contract.content:
@@ -40,8 +41,13 @@ async def trigger_analysis(
             status_code=400, detail="У контракта нет текста для анализа"
         )
 
+    org = await db.get(Organization, user.organization_id)
     orchestrator = ContractAnalysisOrchestrator(settings.LEX_UZ_API_KEY)
-    report = await orchestrator.run_analysis(str(contract.id), contract.content)
+    report = await orchestrator.run_analysis(
+        str(contract.id),
+        contract.content,
+        compliance_policies=org.compliance_policies if org else None,
+    )
 
     for agent_name, result in report["analysis"].items():
         db.add(
@@ -82,7 +88,10 @@ async def get_analysis(
     contract = await get_visible_contract(contract_id, user, db)
     result = await db.execute(
         select(AgentResult)
-        .where(AgentResult.contract_id == contract.id)
+        .where(
+            AgentResult.contract_id == contract.id,
+            AgentResult.result_type == "analysis",
+        )
         .order_by(AgentResult.created_at)
     )
     latest: dict[str, dict] = {}
@@ -157,6 +166,45 @@ async def parse_document_for_chat(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"filename": file.filename, "text": text}
+
+
+# ---------- Перевод контракта ----------
+
+class TranslateRequest(BaseModel):
+    target_lang: str = "uz"
+
+
+@router.post("/contracts/{contract_id}/translate")
+async def translate_contract(
+    contract_id: uuid.UUID,
+    data: TranslateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Юридический перевод контракта (Translation Agent, Phase 2)."""
+    require_api_key()
+    contract = await get_visible_contract(contract_id, user, db)
+    if not contract.content:
+        raise HTTPException(status_code=400, detail="У контракта нет текста")
+
+    orchestrator = ContractAnalysisOrchestrator()
+    try:
+        translated = await orchestrator.translation_agent.translate(
+            contract.content, data.target_lang
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    db.add(
+        AgentResult(
+            contract_id=contract.id,
+            agent_name="translation_agent",
+            result_type=f"translation_{data.target_lang}",
+            result_data={"target_lang": data.target_lang, "content": translated},
+        )
+    )
+    await db.commit()
+    return {"target_lang": data.target_lang, "content": translated}
 
 
 # ---------- Генерация черновика ----------

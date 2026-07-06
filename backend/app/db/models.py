@@ -68,6 +68,8 @@ class Organization(Base):
     address: Mapped[str | None] = mapped_column(String(1024))
     country: Mapped[str] = mapped_column(String(128), server_default="Uzbekistan")
     storage_limit: Mapped[int] = mapped_column(Integer, server_default="1000")  # GB
+    # Внутренние комплаенс-политики: их проверяет Compliance Agent (Phase 2)
+    compliance_policies: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )

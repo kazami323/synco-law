@@ -15,6 +15,7 @@ export interface Organization {
   phone: string | null;
   address: string | null;
   country: string;
+  compliance_policies: string | null;
 }
 
 export interface DashboardMetrics {

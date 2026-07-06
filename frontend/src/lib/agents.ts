@@ -1,8 +1,10 @@
 import {
   FileText,
+  Languages,
   PenLine,
   Scale,
   ShieldAlert,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -42,6 +44,20 @@ export const AGENTS: AgentInfo[] = [
     text: "Составляет и редактирует тексты договоров и юридических документов.",
     hint: "Например: «составь NDA для переговоров с подрядчиком из Ташкента»",
     icon: PenLine,
+  },
+  {
+    key: "translator",
+    name: "Translation Agent",
+    text: "Юридический перевод документов: русский, узбекский, английский.",
+    hint: "Например: «переведи приложенный договор на узбекский (латиница)»",
+    icon: Languages,
+  },
+  {
+    key: "compliance",
+    name: "Compliance Agent",
+    text: "Проверяет сделки на соответствие внутренним политикам компании.",
+    hint: "Например: «не нарушает ли предоплата 100% нашу закупочную политику?»",
+    icon: ShieldCheck,
   },
 ];
 

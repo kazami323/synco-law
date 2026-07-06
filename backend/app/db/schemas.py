@@ -34,6 +34,7 @@ class OrganizationUpdate(BaseModel):
     email: EmailStr | None = None
     phone: str | None = None
     address: str | None = None
+    compliance_policies: str | None = None
 
 
 class OrganizationOut(BaseModel):
@@ -46,6 +47,7 @@ class OrganizationOut(BaseModel):
     address: str | None = None
     country: str
     storage_limit: int
+    compliance_policies: str | None = None
     created_at: datetime
 
 

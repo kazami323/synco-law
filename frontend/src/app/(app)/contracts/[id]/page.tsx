@@ -9,6 +9,7 @@ import {
   Download,
   FileSignature,
   History,
+  Languages,
   Pencil,
   Plus,
   QrCode,
@@ -29,6 +30,7 @@ import type {
 import { Button, Card, Chip, ErrorNote, Input, Modal, Select } from "@/components/ui";
 import { RiskChip, StatusChip, TypeChip } from "@/components/contract-chips";
 import { AnalysisSection } from "@/components/analysis-section";
+import { TranslateModal } from "@/components/translate-modal";
 import { WorkflowPanel } from "@/components/workflow-panel";
 
 const DEADLINE_LABELS: Record<string, string> = {
@@ -56,6 +58,7 @@ export default function ContractPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
+  const [translateOpen, setTranslateOpen] = useState(false);
   const [signRequestData, setSignRequestData] = useState<SignRequest | null>(null);
   const [pin, setPin] = useState("");
   const [signError, setSignError] = useState("");
@@ -177,6 +180,13 @@ export default function ContractPage() {
               </span>
             </Button>
           )}
+          {c.content && (
+            <Button variant="secondary" onClick={() => setTranslateOpen(true)}>
+              <span className="flex items-center gap-2">
+                <Languages size={16} /> Перевести
+              </span>
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => setEditOpen(true)}>
             <span className="flex items-center gap-2">
               <Pencil size={16} /> Редактировать
@@ -289,6 +299,10 @@ export default function ContractPage() {
 
       {editOpen && (
         <EditModal contract={c} onClose={() => setEditOpen(false)} />
+      )}
+
+      {translateOpen && (
+        <TranslateModal contractId={c.id} onClose={() => setTranslateOpen(false)} />
       )}
 
       {signOpen && (
