@@ -1,17 +1,10 @@
 import type { Metadata } from "next";
-import { Manrope, Work_Sans } from "next/font/google";
+// Шрифты лежат в node_modules (fontsource), а не тянутся с Google при
+// сборке — fonts.googleapis.com из локальной сети недоступен
+import "@fontsource-variable/manrope";
+import "@fontsource-variable/work-sans";
 import "./globals.css";
 import { Providers } from "./providers";
-
-const manrope = Manrope({
-  variable: "--font-manrope",
-  subsets: ["latin", "cyrillic"],
-});
-
-const workSans = Work_Sans({
-  variable: "--font-worksans",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "AI Legal Workspace",
@@ -24,11 +17,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="ru"
-      suppressHydrationWarning
-      className={`${manrope.variable} ${workSans.variable} h-full antialiased`}
-    >
+    <html lang="ru" suppressHydrationWarning className="h-full antialiased">
       <head>
         {/* Тема до первой отрисовки — без мигания светлым */}
         <script
