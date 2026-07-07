@@ -320,3 +320,60 @@ async def test_read_all_notifications(client, admin_headers):
         await client.get("/api/notifications/unread-count", headers=admin_headers)
     ).json()
     assert after["count"] == 0
+
+
+async def test_sign_confirm_with_real_pkcs7(client, admin_headers):
+    """Подпись реальным PKCS#7 от E-IMZO: сохраняется как есть, тип eimzo."""
+    contract = await _create_contract(client, admin_headers, title="E-IMZO real")
+    await _move_to_ready_to_sign(client, admin_headers, contract["id"])
+    request_resp = await client.post(
+        f"/api/contracts/{contract['id']}/sign-request",
+        json={},
+        headers=admin_headers,
+    )
+    resp = await client.post(
+        f"/api/contracts/{contract['id']}/sign-confirm",
+        json={
+            "request_id": request_resp.json()["request_id"],
+            "signature": "MIIC...FAKE_PKCS7_BASE64",
+            "certificate": "cn=FIRSOV DANIL,o=OOO Test,serialnumber=AB123",
+            "certificate_thumbprint": "AB123456",
+        },
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["signature"] == "MIIC...FAKE_PKCS7_BASE64"
+    assert resp.json()["certificate_thumbprint"] == "AB123456"
+
+    detail = (
+        await client.get(f"/api/contracts/{contract['id']}", headers=admin_headers)
+    ).json()
+    assert detail["status"] == "signed"
+    assert detail["certificate_thumbprint"] == "AB123456"
+
+
+async def test_sign_confirm_rejected_by_dsv(client, admin_headers, monkeypatch):
+    """Если настроен DSV и он отверг подпись — 400, контракт не подписан."""
+    from app.api import contracts as contracts_api
+
+    async def dsv_reject(pkcs7: str):
+        return False
+
+    monkeypatch.setattr(contracts_api, "verify_pkcs7_via_dsv", dsv_reject)
+
+    contract = await _create_contract(client, admin_headers, title="DSV reject")
+    await _move_to_ready_to_sign(client, admin_headers, contract["id"])
+    await client.post(
+        f"/api/contracts/{contract['id']}/sign-request", json={}, headers=admin_headers
+    )
+    resp = await client.post(
+        f"/api/contracts/{contract['id']}/sign-confirm",
+        json={"signature": "BAD_PKCS7"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 400
+
+    detail = (
+        await client.get(f"/api/contracts/{contract['id']}", headers=admin_headers)
+    ).json()
+    assert detail["status"] == "ready_to_sign"

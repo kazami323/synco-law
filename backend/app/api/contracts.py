@@ -52,7 +52,11 @@ from app.db.schemas import (
 from app.services.deadlines import add_parsed_deadlines, days_left
 from app.services.notifications import create_deadline_notifications, deliver
 from app.services import search as search_service
-from app.services.signature import contract_hash, stub_signature
+from app.services.signature import (
+    contract_hash,
+    stub_signature,
+    verify_pkcs7_via_dsv,
+)
 from app.utils.audit import log_action
 from app.utils.document_parser import parse_file
 from app.utils.storage import presigned_download_url, upload_file
@@ -448,6 +452,15 @@ async def confirm_signature(
             detail="Contract changed after sign request. Create a new sign request.",
         )
 
+    is_real_signature = bool(data and data.signature)
+    if is_real_signature:
+        # Реальный PKCS#7 от клиента E-IMZO; при настроенном DSV — проверяем
+        verdict = await verify_pkcs7_via_dsv(data.signature)
+        if verdict is False:
+            raise HTTPException(
+                status_code=400, detail="Подпись не прошла проверку E-IMZO DSV"
+            )
+
     generated_signature, generated_certificate, generated_thumbprint = stub_signature(
         digest, sign_request.id
     )
@@ -477,7 +490,11 @@ async def confirm_signature(
             current_stage="signed",
             approved_by=user.id,
             approved_at=now,
-            comments="E-IMZO stub signature confirmed",
+            comments=(
+                "Подписано E-IMZO (PKCS#7)"
+                if is_real_signature
+                else "E-IMZO stub signature confirmed"
+            ),
         )
     )
     await log_action(
@@ -486,7 +503,12 @@ async def confirm_signature(
         user_id=user.id,
         resource_type="contract",
         resource_id=contract.id,
-        changes={"from": old_status, "to": contract.status, "request_id": str(sign_request.id)},
+        changes={
+            "from": old_status,
+            "to": contract.status,
+            "request_id": str(sign_request.id),
+            "signature_type": "eimzo" if is_real_signature else "stub",
+        },
         ip_address=_client_ip(request),
     )
     await db.commit()

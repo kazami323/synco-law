@@ -12,7 +12,6 @@ import {
   Languages,
   Pencil,
   Plus,
-  QrCode,
   ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
@@ -28,11 +27,27 @@ import type {
   SignConfirm,
   SignRequest,
 } from "@/lib/types";
-import { Button, Card, Chip, ErrorNote, Input, Modal, Select } from "@/components/ui";
+import {
+  Button,
+  Card,
+  Chip,
+  ErrorNote,
+  Input,
+  Modal,
+  Select,
+  Spinner,
+} from "@/components/ui";
 import { RiskChip, StatusChip, TypeChip } from "@/components/contract-chips";
 import { AnalysisSection } from "@/components/analysis-section";
 import { TranslateModal } from "@/components/translate-modal";
 import { WorkflowPanel } from "@/components/workflow-panel";
+import {
+  eimzoAvailable,
+  eimzoInit,
+  listCertificates,
+  signWithCertificate,
+  type EimzoCertificate,
+} from "@/lib/eimzo";
 
 const DEADLINE_LABELS: Record<string, string> = {
   payment: "Оплата",
@@ -63,6 +78,10 @@ export default function ContractPage() {
   const [signRequestData, setSignRequestData] = useState<SignRequest | null>(null);
   const [pin, setPin] = useState("");
   const [signError, setSignError] = useState("");
+  // E-IMZO: null — ищем клиент; [] — клиент есть, ключей нет; false — не найден
+  const [eimzoCerts, setEimzoCerts] = useState<EimzoCertificate[] | false | null>(null);
+  const [selectedCert, setSelectedCert] = useState<EimzoCertificate | null>(null);
+  const [eimzoSigning, setEimzoSigning] = useState(false);
 
   const contract = useQuery({
     queryKey: ["contract", id],
@@ -81,10 +100,10 @@ export default function ContractPage() {
   });
 
   const signConfirm = useMutation({
-    mutationFn: () =>
+    mutationFn: (body: Record<string, unknown>) =>
       api<SignConfirm>(`/api/contracts/${id}/sign-confirm`, {
         method: "POST",
-        body: { request_id: signRequestData?.request_id, pin: pin || null },
+        body: { request_id: signRequestData?.request_id, ...body },
       }),
     onSuccess: () => {
       setSignOpen(false);
@@ -98,6 +117,28 @@ export default function ContractPage() {
     onError: (err) =>
       setSignError(err instanceof Error ? err.message : "Не удалось подтвердить подпись"),
   });
+
+  // Живая подпись через локальный клиент E-IMZO
+  async function signWithEimzo() {
+    if (!selectedCert || !signRequestData) return;
+    setSignError("");
+    setEimzoSigning(true);
+    try {
+      const { pkcs7, serial } = await signWithCertificate(
+        selectedCert,
+        signRequestData.hash
+      );
+      signConfirm.mutate({
+        signature: pkcs7,
+        certificate: selectedCert.alias,
+        certificate_thumbprint: serial,
+      });
+    } catch (err) {
+      setSignError(err instanceof Error ? err.message : "Ошибка подписи E-IMZO");
+    } finally {
+      setEimzoSigning(false);
+    }
+  }
 
   const archive = useMutation({
     mutationFn: () => api(`/api/contracts/${id}`, { method: "DELETE" }),
@@ -118,7 +159,24 @@ export default function ContractPage() {
     setSignError("");
     setSignRequestData(null);
     setPin("");
+    setEimzoCerts(null);
+    setSelectedCert(null);
     signRequest.mutate();
+    // Параллельно ищем локальный клиент E-IMZO и ключи пользователя
+    void (async () => {
+      if (!(await eimzoAvailable())) {
+        setEimzoCerts(false);
+        return;
+      }
+      try {
+        await eimzoInit();
+        const certs = await listCertificates();
+        setEimzoCerts(certs);
+        if (certs.length === 1) setSelectedCert(certs[0]);
+      } catch {
+        setEimzoCerts(false);
+      }
+    })();
   }
 
   if (contract.isLoading) {
@@ -310,42 +368,122 @@ export default function ContractPage() {
       )}
 
       {signOpen && (
-        <Modal title="E-IMZO подпись" onClose={() => setSignOpen(false)}>
+        <Modal title="Подписание E-IMZO" onClose={() => setSignOpen(false)}>
           <div className="space-y-4">
-            <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4 flex items-center gap-4">
-              <div className="w-24 h-24 rounded-lg bg-surface-container-lowest border border-outline-variant flex items-center justify-center text-primary">
-                <QrCode size={52} />
+            <div className="rounded-xl border border-outline-variant bg-surface-container-low px-4 py-3">
+              <div className="text-xs font-semibold text-on-surface-variant uppercase">
+                Хеш документа (SHA-256)
               </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold">Запрос на подпись</div>
-                <div className="text-xs text-on-surface-variant mt-1 break-all">
-                  {signRequestData?.hash ?? "Создаем хеш контракта..."}
-                </div>
+              <div className="text-xs mt-1 break-all font-mono">
+                {signRequestData?.hash ?? "Создаём хеш контракта..."}
               </div>
             </div>
-            <Input
-              label="PIN E-IMZO"
-              type="password"
-              inputMode="numeric"
-              value={pin}
-              onChange={(event) => setPin(event.target.value)}
-              placeholder="123456"
-            />
+
+            {/* Поиск клиента E-IMZO */}
+            {eimzoCerts === null && (
+              <div className="flex items-center gap-2 text-sm text-on-surface-variant py-2">
+                <Spinner className="text-primary" /> Ищем клиент E-IMZO на этом
+                компьютере…
+              </div>
+            )}
+
+            {/* Клиент найден: выбор сертификата */}
+            {Array.isArray(eimzoCerts) && (
+              <div className="space-y-2">
+                <div className="text-[13px] font-semibold">
+                  Ключ электронной подписи
+                </div>
+                {eimzoCerts.length === 0 && (
+                  <p className="text-sm text-on-surface-variant">
+                    E-IMZO запущен, но ключи не найдены. Подключите носитель с
+                    ЭЦП или скопируйте ключ в C:\DSKEYS.
+                  </p>
+                )}
+                {eimzoCerts.map((cert) => (
+                  <button
+                    key={`${cert.disk}${cert.path}${cert.name}`}
+                    type="button"
+                    onClick={() => setSelectedCert(cert)}
+                    className={`w-full text-left border rounded-lg px-3 py-2.5 cursor-pointer transition-colors ${
+                      selectedCert === cert
+                        ? "border-primary ring-1 ring-primary"
+                        : "border-outline-variant hover:border-primary"
+                    }`}
+                  >
+                    <div className="text-sm font-medium">{cert.cn}</div>
+                    <div className="text-xs text-on-surface-variant mt-0.5">
+                      {cert.organization ?? "Физическое лицо"}
+                      {cert.tin ? ` · ИНН ${cert.tin}` : ""}
+                      {cert.validTo ? ` · до ${cert.validTo}` : ""}
+                    </div>
+                  </button>
+                ))}
+                {eimzoCerts.length > 0 && (
+                  <Button
+                    className="w-full"
+                    disabled={!selectedCert || !signRequestData}
+                    loading={eimzoSigning || signConfirm.isPending}
+                    onClick={signWithEimzo}
+                  >
+                    <span className="flex items-center justify-center gap-2">
+                      {!eimzoSigning && !signConfirm.isPending && (
+                        <ShieldCheck size={16} />
+                      )}
+                      {eimzoSigning
+                        ? "Введите пароль ключа в окне E-IMZO…"
+                        : signConfirm.isPending
+                          ? "Сохраняем подпись..."
+                          : "Подписать через E-IMZO"}
+                    </span>
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Клиент не найден: инструкция + тестовая подпись */}
+            {eimzoCerts === false && (
+              <>
+                <div className="rounded-lg bg-warning-container/50 text-sm px-3 py-2.5">
+                  Клиент E-IMZO не найден. Установите его с{" "}
+                  <a
+                    href="https://e-imzo.uz/#/downloads"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary font-medium hover:underline"
+                  >
+                    e-imzo.uz
+                  </a>
+                  , запустите и откройте это окно снова.
+                </div>
+                <div className="border-t border-outline-variant pt-3">
+                  <div className="text-[13px] font-semibold mb-2">
+                    Тестовая подпись (для демо, без юридической силы)
+                  </div>
+                  <Input
+                    label="PIN"
+                    type="password"
+                    inputMode="numeric"
+                    value={pin}
+                    onChange={(event) => setPin(event.target.value)}
+                    placeholder="123456"
+                  />
+                  <Button
+                    variant="secondary"
+                    className="w-full mt-3"
+                    disabled={!signRequestData}
+                    loading={signConfirm.isPending}
+                    onClick={() => {
+                      setSignError("");
+                      signConfirm.mutate({ pin: pin || null });
+                    }}
+                  >
+                    Подписать тестовой подписью
+                  </Button>
+                </div>
+              </>
+            )}
+
             {signError && <ErrorNote message={signError} />}
-            <Button
-              className="w-full"
-              disabled={!signRequestData}
-              loading={signConfirm.isPending}
-              onClick={() => {
-                setSignError("");
-                signConfirm.mutate();
-              }}
-            >
-              <span className="flex items-center justify-center gap-2">
-                {!signConfirm.isPending && <ShieldCheck size={16} />}
-                {signConfirm.isPending ? "Подписываем..." : "Подтвердить подпись"}
-              </span>
-            </Button>
           </div>
         </Modal>
       )}
