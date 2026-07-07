@@ -16,10 +16,11 @@ import { can } from "@/lib/permissions";
 import { CONTRACT_TYPES } from "@/lib/types";
 import { Card, Skeleton } from "@/components/ui";
 
-/* Палитра серий проверена валидатором dataviz (CVD ΔE 99, контраст ≥3:1) */
+/* Серии графиков — токены с валидированными значениями для обеих тем
+   (светлая: #005ea4/#b87700; тёмная на Malt: #3f87d0/#ba8900) */
 const SERIES = {
-  created: { label: "Создано", color: "#005ea4" },
-  signed: { label: "Подписано", color: "#b87700" },
+  created: { label: "Создано", color: "var(--color-chart-1)" },
+  signed: { label: "Подписано", color: "var(--color-chart-2)" },
 };
 
 interface Analytics {

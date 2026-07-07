@@ -1,10 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, Check, CheckCheck, LogOut, Search } from "lucide-react";
+import { Bell, Check, CheckCheck, LogOut, Moon, Search, Sun } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { ROLE_LABELS, type Notification as AppNotification } from "@/lib/types";
@@ -68,6 +68,7 @@ export function Header() {
       </form>
 
       <div className="flex items-center gap-4 ml-auto">
+        <ThemeToggle />
         <div className="relative">
           <button
             onClick={() => setOpen((value) => !value)}
@@ -76,7 +77,7 @@ export function Header() {
           >
             <Bell size={20} />
             {(unread.data?.count ?? 0) > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-error text-white text-[11px] font-semibold flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-error text-on-primary text-[11px] font-semibold flex items-center justify-center">
                 {Math.min(unread.data?.count ?? 0, 99)}
               </span>
             )}
@@ -189,5 +190,31 @@ export function Header() {
         </button>
       </div>
     </header>
+  );
+}
+
+function ThemeToggle() {
+  const [dark, setDark] = useState(false);
+
+  // Класс уже выставлен инлайн-скриптом в layout — читаем фактическое состояние
+  useEffect(() => {
+    setDark(document.documentElement.classList.contains("dark"));
+  }, []);
+
+  function toggle() {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("theme", next ? "dark" : "light");
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      title={dark ? "Светлая тема" : "Тёмная тема"}
+      className="w-10 h-10 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer"
+    >
+      {dark ? <Sun size={20} /> : <Moon size={20} />}
+    </button>
   );
 }

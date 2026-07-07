@@ -26,8 +26,46 @@
   --color-warning: #a96400;
   --color-warning-container: #ffdcbd;
 
+  /* Серии графиков — проверены dataviz-валидатором на светлой поверхности */
+  --color-chart-1: #005ea4;
+  --color-chart-2: #b87700;
+
   --font-heading: var(--font-manrope), sans-serif;
   --font-body: var(--font-worksans), sans-serif;
+}
+
+/* Тёмная тема «Turmeric / Malt»: жёлтый акцент #FFBE0B на тёплом
+   тёмно-коричневом #2A2312. Значения подобраны отдельно (не инверсия);
+   серии графиков проверены валидатором на поверхности Malt. */
+.dark {
+  color-scheme: dark;
+
+  --color-surface: #211b0d;
+  --color-surface-container-lowest: #2a2312; /* карточки — Malt */
+  --color-surface-container-low: #262010;
+  --color-surface-container: #372e15;
+  --color-surface-container-high: #443919;
+  --color-on-surface: #f4ecd9;
+  --color-on-surface-variant: #cfc3a3;
+  --color-outline: #9c8f68;
+  --color-outline-variant: #4d4224;
+
+  --color-primary: #ffbe0b; /* Turmeric */
+  --color-primary-hover: #ffcf47;
+  --color-on-primary: #2a2312;
+  --color-primary-fixed: #4c3d07;
+
+  --color-secondary-container: #4c4114;
+  --color-on-secondary-container: #ffd75e;
+
+  --color-error: #ffb4a9;
+  --color-error-container: #55211b;
+  --color-success: #83d99b;
+  --color-warning: #ffab4d; /* оранжевый, не спорит с жёлтым primary */
+  --color-warning-container: #5b3a0e;
+
+  --color-chart-1: #3f87d0;
+  --color-chart-2: #ba8900;
 }
 
 body {
