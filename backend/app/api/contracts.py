@@ -29,6 +29,7 @@ from app.core.permissions import ROLE_PERMISSIONS, require_permission
 from app.db.base import get_db
 from app.db.models import (
     Contract,
+    Project,
     ContractDeadline,
     ContractType,
     ContractVersion,
@@ -131,7 +132,19 @@ async def _create_contract_row(
     currency: str,
     file_path: str | None,
     ip: str | None,
+    project_id: uuid.UUID | None = None,
 ) -> Contract:
+    if project_id is not None:
+        project_exists = (
+            await db.execute(
+                select(Project.id).where(
+                    Project.id == project_id,
+                    Project.organization_id == user.organization_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if project_exists is None:
+            raise HTTPException(status_code=404, detail="Project not found")
     if contract_type not in VALID_TYPES:
         raise HTTPException(
             status_code=400,
@@ -139,6 +152,7 @@ async def _create_contract_row(
         )
     contract = Contract(
         organization_id=user.organization_id,
+        project_id=project_id,
         title=title,
         contract_type=contract_type,
         counterparty=counterparty,
@@ -201,6 +215,7 @@ async def create_contract(
         currency=data.currency,
         file_path=None,
         ip=_client_ip(request),
+        project_id=data.project_id,
     )
 
 
@@ -214,6 +229,7 @@ async def create_contract_from_file(
     counterparty: str | None = Form(None),
     amount: float | None = Form(None),
     currency: str = Form("UZS"),
+    project_id: uuid.UUID | None = Form(None),
     file: UploadFile = File(...),
     user: User = Depends(require_permission("create")),
     db: AsyncSession = Depends(get_db),
@@ -242,6 +258,7 @@ async def create_contract_from_file(
         currency=currency,
         file_path=file_path,
         ip=_client_ip(request),
+        project_id=project_id,
     )
 
 
@@ -251,6 +268,7 @@ async def list_contracts(
     limit: int = 20,
     status_filter: str | None = None,
     q: str | None = None,
+    project_id: uuid.UUID | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -265,6 +283,8 @@ async def list_contracts(
         query = query.where(Contract.created_by == user.id)
     if status_filter:
         query = query.where(Contract.status == status_filter)
+    if project_id is not None:
+        query = query.where(Contract.project_id == project_id)
     if q:
         pattern = f"%{q}%"
         query = query.where(

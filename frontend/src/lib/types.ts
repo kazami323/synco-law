@@ -38,8 +38,21 @@ export interface Contract {
   counterparty: string | null;
   status: string;
   risk_score: number | null;
+  project_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  client: string | null;
+  description: string | null;
+  status: "active" | "closed";
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  contracts_count: number;
 }
 
 export interface ContractDetail extends Contract {

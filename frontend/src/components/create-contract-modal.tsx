@@ -59,7 +59,13 @@ const TYPES = [
 
 const STEPS = ["Тип", "Детали", "Содержание"];
 
-export function CreateContractModal({ onClose }: { onClose: () => void }) {
+export function CreateContractModal({
+  onClose,
+  projectId,
+}: {
+  onClose: () => void;
+  projectId?: string;
+}) {
   const router = useRouter();
   const qc = useQueryClient();
   const [step, setStep] = useState(0);
@@ -93,6 +99,7 @@ export function CreateContractModal({ onClose }: { onClose: () => void }) {
         if (common.counterparty) form.append("counterparty", common.counterparty);
         if (details.amount) form.append("amount", details.amount);
         form.append("currency", details.currency);
+        if (projectId) form.append("project_id", projectId);
         form.append("file", file);
         return apiUpload<ContractDetail>("/api/contracts/upload", form);
       }
@@ -118,11 +125,16 @@ export function CreateContractModal({ onClose }: { onClose: () => void }) {
       }
       return api<ContractDetail>("/api/contracts/", {
         method: "POST",
-        body: { ...common, content: finalContent || null },
+        body: {
+          ...common,
+          content: finalContent || null,
+          project_id: projectId ?? null,
+        },
       });
     },
     onSuccess: (contract) => {
       qc.invalidateQueries({ queryKey: ["contracts"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["dashboard-metrics"] });
       onClose();
       router.push(`/contracts/${contract.id}`);

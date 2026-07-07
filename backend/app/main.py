@@ -13,6 +13,7 @@ from app.api import (
     dashboard,
     notifications,
     organizations,
+    projects,
     search,
     users,
     workflow,
@@ -93,6 +94,7 @@ app.include_router(auth.router)
 app.include_router(organizations.router)
 app.include_router(users.router)
 app.include_router(contracts.router)
+app.include_router(projects.router)
 app.include_router(agents.router)
 app.include_router(dashboard.router)
 app.include_router(notifications.router)

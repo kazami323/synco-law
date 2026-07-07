@@ -168,7 +168,13 @@ async def test_telegram_link_flow(client, admin_headers, monkeypatch, db_factory
     assert channels["telegram_linked"] is False
 
 
-async def test_channels_endpoint_defaults(client, admin_headers):
+async def test_channels_endpoint_defaults(client, admin_headers, monkeypatch):
+    # Локальный .env может содержать реальные SMTP/Telegram — тест
+    # проверяет именно состояние «ничего не настроено»
+    from app.services import email as email_service
+
+    monkeypatch.setattr(email_service.settings, "SMTP_HOST", "")
+    monkeypatch.setattr(telegram_service.settings, "TELEGRAM_BOT_TOKEN", "")
     channels = (
         await client.get("/api/notifications/channels", headers=admin_headers)
     ).json()

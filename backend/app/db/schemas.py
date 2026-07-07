@@ -51,6 +51,33 @@ class OrganizationOut(BaseModel):
     created_at: datetime
 
 
+class ProjectCreate(BaseModel):
+    name: str
+    client: str | None = None
+    description: str | None = None
+
+
+class ProjectUpdate(BaseModel):
+    name: str | None = None
+    client: str | None = None
+    description: str | None = None
+    status: str | None = None  # active | closed
+
+
+class ProjectOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    client: str | None = None
+    description: str | None = None
+    status: str
+    created_by: uuid.UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+    contracts_count: int = 0
+
+
 class ContractCreate(BaseModel):
     title: str
     contract_type: str
@@ -58,6 +85,7 @@ class ContractCreate(BaseModel):
     content: str | None = None
     amount: float | None = None
     currency: str = "UZS"
+    project_id: uuid.UUID | None = None
 
 
 class ContractUpdate(BaseModel):
@@ -78,6 +106,7 @@ class ContractOut(BaseModel):
     counterparty: str | None = None
     status: str
     risk_score: int | None = None
+    project_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

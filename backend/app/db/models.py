@@ -106,6 +106,37 @@ class User(Base):
     organization: Mapped[Organization | None] = relationship(back_populates="users")
 
 
+class Project(Base):
+    """Проект (дело/заказ): папка, в которой юрист ведёт договоры и
+    документы одного клиента или заказа."""
+
+    __tablename__ = "projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(256))
+    description: Mapped[str | None] = mapped_column(Text)
+    client: Mapped[str | None] = mapped_column(String(512))  # заказчик
+    status: Mapped[str] = mapped_column(
+        String(32), server_default="active", index=True
+    )  # active | closed
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=datetime.utcnow
+    )
+
+    contracts: Mapped[list["Contract"]] = relationship(back_populates="project")
+
+
 class Contract(Base):
     __tablename__ = "contracts"
 
@@ -114,6 +145,9 @@ class Contract(Base):
     )
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id"), index=True
     )
     title: Mapped[str] = mapped_column(String(512))
     contract_type: Mapped[str | None] = mapped_column(String(64))
@@ -145,6 +179,7 @@ class Contract(Base):
     signature_certificate: Mapped[str | None] = mapped_column(Text)
     certificate_thumbprint: Mapped[str | None] = mapped_column(String(128))
 
+    project: Mapped[Project | None] = relationship(back_populates="contracts")
     versions: Mapped[list["ContractVersion"]] = relationship(
         back_populates="contract", cascade="all, delete-orphan"
     )

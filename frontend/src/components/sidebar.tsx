@@ -11,6 +11,7 @@ import {
   CircleQuestionMark,
   CloudCheck,
   FileText,
+  FolderKanban,
   LayoutDashboard,
   Plus,
   Scale,
@@ -23,6 +24,7 @@ import { can } from "@/lib/permissions";
 // right: null — виден всем ролям
 const NAV = [
   { href: "/dashboard", label: "Дашборд", icon: LayoutDashboard, right: "view_all" },
+  { href: "/projects", label: "Проекты", icon: FolderKanban, right: null },
   { href: "/contracts", label: "Контракты", icon: FileText, right: null },
   { href: "/analysis", label: "Анализ", icon: BarChart3, right: "view_all" },
   { href: "/agents", label: "AI-агенты", icon: Bot, right: null },
