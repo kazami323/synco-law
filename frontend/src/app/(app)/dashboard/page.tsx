@@ -135,7 +135,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : contracts.data && contracts.data.items.length > 0 ? (
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto"><table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase text-on-surface-variant">
                   <th className="px-6 py-3">Название</th>
@@ -171,7 +171,7 @@ export default function DashboardPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           ) : (
             <EmptyState
               title="Контрактов пока нет"

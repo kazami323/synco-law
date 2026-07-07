@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, Check, CheckCheck, LogOut, Moon, Search, Sun } from "lucide-react";
+import { Bell, Check, CheckCheck, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { ROLE_LABELS, type Notification as AppNotification } from "@/lib/types";
 
-export function Header() {
+export function Header({ onMenu }: { onMenu?: () => void }) {
   const { user, logout } = useAuth();
   const qc = useQueryClient();
   const router = useRouter();
@@ -51,7 +51,14 @@ export function Header() {
   }
 
   return (
-    <header className="h-16 shrink-0 border-b border-outline-variant bg-surface-container-lowest flex items-center gap-4 px-6">
+    <header className="h-16 shrink-0 border-b border-outline-variant bg-surface-container-lowest flex items-center gap-2 sm:gap-4 px-3 sm:px-6">
+      <button
+        onClick={onMenu}
+        title="Меню"
+        className="lg:hidden w-10 h-10 shrink-0 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container flex items-center justify-center cursor-pointer"
+      >
+        <Menu size={20} />
+      </button>
       <form className="flex-1 max-w-xl" onSubmit={submitSearch}>
         <div className="relative">
           <Search
@@ -67,7 +74,7 @@ export function Header() {
         </div>
       </form>
 
-      <div className="flex items-center gap-4 ml-auto">
+      <div className="flex items-center gap-1.5 sm:gap-4 ml-auto">
         <ThemeToggle />
         <div className="relative">
           <button
@@ -170,7 +177,7 @@ export function Header() {
           )}
         </div>
 
-        <div className="text-right">
+        <div className="text-right hidden sm:block">
           <div className="text-sm font-semibold leading-tight">
             {user?.full_name || user?.username}
           </div>

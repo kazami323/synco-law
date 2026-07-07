@@ -115,7 +115,7 @@ function ContractsContent() {
             ))}
           </div>
         ) : data && data.items.length > 0 ? (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead className="bg-surface-container-low">
               <tr className="text-left text-xs uppercase tracking-wide text-on-surface-variant">
                 <th className="px-6 py-3">Название</th>
@@ -156,7 +156,7 @@ function ContractsContent() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         ) : (
           <EmptyState
             title={q || status ? "Ничего не найдено" : "Контрактов пока нет"}

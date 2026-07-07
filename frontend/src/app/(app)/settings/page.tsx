@@ -111,7 +111,7 @@ export default function SettingsPage() {
             hint="Список сотрудников доступен администраторам и руководителям"
           />
         ) : users.data && users.data.items.length > 0 ? (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-on-surface-variant">
                 <th className="px-6 py-3">Имя</th>
@@ -189,7 +189,7 @@ export default function SettingsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         ) : (
           <EmptyState title="Загрузка..." />
         )}

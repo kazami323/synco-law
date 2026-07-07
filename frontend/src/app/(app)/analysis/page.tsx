@@ -260,7 +260,7 @@ function TrendCard({ months }: { months: Analytics["months"] }) {
       </div>
 
       {tableView ? (
-        <table className="w-full text-sm mt-4">
+        <div className="overflow-x-auto"><table className="w-full text-sm mt-4">
           <thead>
             <tr className="text-left text-xs uppercase text-on-surface-variant border-b border-outline-variant">
               <th className="py-2">Месяц</th>
@@ -277,7 +277,7 @@ function TrendCard({ months }: { months: Analytics["months"] }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       ) : (
         <div className="relative mt-4 overflow-x-auto">
           <svg

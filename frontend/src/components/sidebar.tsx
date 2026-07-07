@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import {
   Archive,
   BarChart3,
@@ -31,14 +32,37 @@ const NAV = [
   { href: "/settings", label: "Настройки", icon: Settings, right: null },
 ];
 
-export function Sidebar() {
+export function Sidebar({
+  mobileOpen = false,
+  onClose,
+}: {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}) {
   const pathname = usePathname();
   const { user } = useAuth();
+
+  // На телефоне шторка закрывается после перехода по ссылке
+  useEffect(() => {
+    onClose?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const items = NAV.filter((item) => item.right === null || can(user, item.right));
 
   return (
-    <aside className="w-60 shrink-0 border-r border-outline-variant bg-surface-container-low flex flex-col">
+    <>
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-on-surface/30 lg:hidden animate-fade-in"
+          onClick={onClose}
+        />
+      )}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 lg:static lg:z-auto w-60 shrink-0 border-r border-outline-variant bg-surface-container-low flex flex-col transform transition-transform duration-200 lg:translate-x-0 ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
       <div className="flex items-center gap-3 px-5 pt-6 pb-5">
         <div className="w-10 h-10 rounded-lg bg-primary text-on-primary flex items-center justify-center">
           <Scale size={22} />
@@ -91,6 +115,7 @@ export function Sidebar() {
           Помощь
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

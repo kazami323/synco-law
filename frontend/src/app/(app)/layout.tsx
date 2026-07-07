@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
@@ -11,6 +11,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -29,10 +30,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
+      <Sidebar mobileOpen={menuOpen} onClose={() => setMenuOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0">
-        <Header />
-        <main className="flex-1 overflow-y-auto p-8">
+        <Header onMenu={() => setMenuOpen(true)} />
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           {/* key по маршруту перезапускает анимацию появления при навигации */}
           <div key={pathname} className="animate-fade-in-up">
             {children}
