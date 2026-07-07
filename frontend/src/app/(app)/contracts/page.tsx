@@ -5,6 +5,8 @@ import { FileDown, Plus, Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { api, apiDownload } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import type { ContractList } from "@/lib/types";
 import { Button, Card, EmptyState, Select, Skeleton } from "@/components/ui";
 import {
@@ -26,6 +28,8 @@ export default function ContractsPage() {
 function ContractsContent() {
   const router = useRouter();
   const params = useSearchParams();
+  const { user } = useAuth();
+  const canCreate = can(user, "create");
   const [status, setStatus] = useState("");
   const [q, setQ] = useState(params.get("q") ?? "");
   const [modalOpen, setModalOpen] = useState(false);
@@ -64,11 +68,13 @@ function ContractsContent() {
               <FileDown size={16} /> Экспорт CSV
             </span>
           </Button>
-          <Button onClick={() => setModalOpen(true)}>
-            <span className="flex items-center gap-2">
-              <Plus size={16} /> Создать контракт
-            </span>
-          </Button>
+          {canCreate && (
+            <Button onClick={() => setModalOpen(true)}>
+              <span className="flex items-center gap-2">
+                <Plus size={16} /> Создать контракт
+              </span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -161,7 +167,8 @@ function ContractsContent() {
             }
             action={
               !q &&
-              !status && (
+              !status &&
+              canCreate && (
                 <Button onClick={() => setModalOpen(true)}>
                   <span className="flex items-center gap-2">
                     <Plus size={16} /> Создать контракт

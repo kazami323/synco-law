@@ -5,6 +5,7 @@ import { BadgeCheck, Eye, Plus, Scale, Shield, UserCog } from "lucide-react";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import type { Organization, User, UserList } from "@/lib/types";
 import { ROLE_LABELS } from "@/lib/types";
 import {
@@ -48,9 +49,11 @@ export default function SettingsPage() {
     queryKey: ["users"],
     queryFn: () => api<UserList>("/api/users/?limit=100"),
     retry: false,
+    enabled: can(me, "view_all"),
   });
 
-  const canManage = me && ["admin", "head"].includes(me.role);
+  const canManage = can(me, "manage_users");
+  const canViewUsers = can(me, "view_all");
 
   const patchUser = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
@@ -78,7 +81,26 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Сотрудники */}
+      {/* Мой профиль */}
+      <Card className="mt-6 p-6">
+        <div className="flex items-center gap-4">
+          <div
+            className={`w-12 h-12 rounded-full flex items-center justify-center font-semibold ${AVATAR_COLORS[0]}`}
+          >
+            {me ? initials(me) : "?"}
+          </div>
+          <div className="flex-1">
+            <div className="font-semibold">{me?.full_name || me?.username}</div>
+            <div className="text-sm text-on-surface-variant">{me?.email}</div>
+          </div>
+          <Chip tone={me?.role === "admin" ? "info" : "neutral"}>
+            {me ? (ROLE_LABELS[me.role] ?? me.role) : ""}
+          </Chip>
+        </div>
+      </Card>
+
+      {/* Сотрудники — для ролей с обзором организации */}
+      {canViewUsers && (
       <Card className="mt-6 overflow-hidden">
         <div className="px-6 py-4 bg-surface-container-low border-b border-outline-variant font-semibold">
           Активные пользователи
@@ -172,6 +194,7 @@ export default function SettingsPage() {
           <EmptyState title="Загрузка..." />
         )}
       </Card>
+      )}
 
       {/* Обзор ролей */}
       <Card className="mt-6 p-6">

@@ -72,7 +72,13 @@ const COMPLIANCE: Record<string, { label: string; tone: "success" | "warning" | 
   "non-compliant": { label: "Не соответствует", tone: "error" },
 };
 
-export function AnalysisSection({ contractId }: { contractId: string }) {
+export function AnalysisSection({
+  contractId,
+  canRun = true,
+}: {
+  contractId: string;
+  canRun?: boolean;
+}) {
   const qc = useQueryClient();
   const [error, setError] = useState("");
 
@@ -108,19 +114,21 @@ export function AnalysisSection({ contractId }: { contractId: string }) {
           <Sparkles size={18} className="text-primary" />
           AI-анализ контракта
         </div>
-        <Button
-          loading={run.isPending}
-          onClick={() => {
-            setError("");
-            run.mutate();
-          }}
-        >
-          {run.isPending
-            ? "Анализируем… (1-2 минуты)"
-            : hasResults
-              ? "Повторить анализ"
-              : "Запустить AI-анализ"}
-        </Button>
+        {canRun && (
+          <Button
+            loading={run.isPending}
+            onClick={() => {
+              setError("");
+              run.mutate();
+            }}
+          >
+            {run.isPending
+              ? "Анализируем… (1-2 минуты)"
+              : hasResults
+                ? "Повторить анализ"
+                : "Запустить AI-анализ"}
+          </Button>
+        )}
       </div>
 
       {error && <div className="mt-4"><ErrorNote message={error} /></div>}

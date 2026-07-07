@@ -20,6 +20,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import type {
   ContractDeadline,
   ContractDetail,
@@ -144,8 +145,9 @@ export default function ContractPage() {
   }
 
   const c = contract.data;
-  const canArchive = user?.role === "admin" && c.status !== "archived";
-  const canSign = user?.role === "admin" && c.status === "ready_to_sign";
+  const canEdit = can(user, "edit");
+  const canArchive = can(user, "delete") && c.status !== "archived";
+  const canSign = can(user, "sign") && c.status === "ready_to_sign";
 
   return (
     <div className="max-w-6xl">
@@ -187,11 +189,13 @@ export default function ContractPage() {
               </span>
             </Button>
           )}
-          <Button variant="secondary" onClick={() => setEditOpen(true)}>
-            <span className="flex items-center gap-2">
-              <Pencil size={16} /> Редактировать
-            </span>
-          </Button>
+          {canEdit && (
+            <Button variant="secondary" onClick={() => setEditOpen(true)}>
+              <span className="flex items-center gap-2">
+                <Pencil size={16} /> Редактировать
+              </span>
+            </Button>
+          )}
           {canArchive && (
             <Button variant="danger" onClick={() => setConfirmArchive(true)}>
               <span className="flex items-center gap-2">
@@ -261,12 +265,12 @@ export default function ContractPage() {
             )}
           </Card>
 
-          <AnalysisSection contractId={c.id} />
+          <AnalysisSection contractId={c.id} canRun={canEdit} />
         </div>
 
         <div className="space-y-6">
           <WorkflowPanel contractId={c.id} />
-          <DeadlinesPanel contractId={c.id} />
+          <DeadlinesPanel contractId={c.id} canEdit={canEdit} />
 
           <Card className="p-6 h-fit">
             <div className="flex items-center gap-2 font-semibold mb-4">
@@ -370,7 +374,13 @@ export default function ContractPage() {
   );
 }
 
-function DeadlinesPanel({ contractId }: { contractId: string }) {
+function DeadlinesPanel({
+  contractId,
+  canEdit,
+}: {
+  contractId: string;
+  canEdit: boolean;
+}) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ deadline_date: "", type: "payment" });
@@ -405,9 +415,11 @@ function DeadlinesPanel({ contractId }: { contractId: string }) {
           <CalendarClock size={18} />
           Критичные сроки
         </div>
-        <Button variant="secondary" className="px-3" onClick={() => setOpen(true)}>
-          <Plus size={16} />
-        </Button>
+        {canEdit && (
+          <Button variant="secondary" className="px-3" onClick={() => setOpen(true)}>
+            <Plus size={16} />
+          </Button>
+        )}
       </div>
 
       {deadlines.isLoading ? (

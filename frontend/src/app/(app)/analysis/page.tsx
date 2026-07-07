@@ -8,8 +8,11 @@ import {
   Table2,
   TriangleAlert,
 } from "lucide-react";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { CONTRACT_TYPES } from "@/lib/types";
 import { Card, Skeleton } from "@/components/ui";
 
@@ -64,9 +67,18 @@ function formatAmount(value: number) {
 }
 
 export default function AnalysisPage() {
+  const { user } = useAuth();
+  const router = useRouter();
+  const allowed = can(user, "view_all");
+
+  useEffect(() => {
+    if (user && !allowed) router.replace("/contracts");
+  }, [user, allowed, router]);
+
   const analytics = useQuery({
     queryKey: ["analytics"],
     queryFn: () => api<Analytics>("/api/dashboard/analytics?months=6"),
+    enabled: allowed,
   });
 
   const d = analytics.data;

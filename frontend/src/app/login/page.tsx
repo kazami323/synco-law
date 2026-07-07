@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Scale, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
+import { homeFor } from "@/lib/permissions";
 import { Button, ErrorNote, Input } from "@/components/ui";
 
 export default function LoginPage() {
@@ -21,8 +22,8 @@ export default function LoginPage() {
     setError("");
     setBusy(true);
     try {
-      await login(email, password);
-      router.replace("/dashboard");
+      const me = await login(email, password);
+      router.replace(me.organization_id ? homeFor(me) : "/onboarding");
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 401

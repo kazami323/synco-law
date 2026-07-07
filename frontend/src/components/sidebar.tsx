@@ -16,20 +16,26 @@ import {
   Settings,
   Workflow,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 
+// right: null — виден всем ролям
 const NAV = [
-  { href: "/dashboard", label: "Дашборд", icon: LayoutDashboard },
-  { href: "/contracts", label: "Контракты", icon: FileText },
-  { href: "/analysis", label: "Анализ", icon: BarChart3 },
-  { href: "/agents", label: "AI-агенты", icon: Bot },
-  { href: "/workflow", label: "Согласование", icon: Workflow },
-  { href: "/notifications", label: "Уведомления", icon: Bell },
-  { href: "/archive", label: "Архив", icon: Archive },
-  { href: "/settings", label: "Настройки", icon: Settings },
+  { href: "/dashboard", label: "Дашборд", icon: LayoutDashboard, right: "view_all" },
+  { href: "/contracts", label: "Контракты", icon: FileText, right: null },
+  { href: "/analysis", label: "Анализ", icon: BarChart3, right: "view_all" },
+  { href: "/agents", label: "AI-агенты", icon: Bot, right: null },
+  { href: "/workflow", label: "Согласование", icon: Workflow, right: null },
+  { href: "/notifications", label: "Уведомления", icon: Bell, right: null },
+  { href: "/archive", label: "Архив", icon: Archive, right: null },
+  { href: "/settings", label: "Настройки", icon: Settings, right: null },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
+
+  const items = NAV.filter((item) => item.right === null || can(user, item.right));
 
   return (
     <aside className="w-60 shrink-0 border-r border-outline-variant bg-surface-container-low flex flex-col">
@@ -43,18 +49,20 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div className="px-4 pb-4">
-        <Link
-          href="/contracts"
-          className="flex items-center justify-center gap-2 h-10 rounded-lg bg-primary text-on-primary text-sm font-medium hover:bg-primary-hover transition-colors"
-        >
-          <Plus size={18} />
-          Новый контракт
-        </Link>
-      </div>
+      {can(user, "create") && (
+        <div className="px-4 pb-4">
+          <Link
+            href="/contracts"
+            className="flex items-center justify-center gap-2 h-10 rounded-lg bg-primary text-on-primary text-sm font-medium hover:bg-primary-hover transition-colors"
+          >
+            <Plus size={18} />
+            Новый контракт
+          </Link>
+        </div>
+      )}
 
       <nav className="flex-1 px-4 space-y-1">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {items.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href);
           return (
             <Link

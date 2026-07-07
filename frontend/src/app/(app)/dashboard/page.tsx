@@ -8,7 +8,11 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import type { ContractList, DashboardMetrics } from "@/lib/types";
 import { Card, Chip, EmptyState } from "@/components/ui";
 import { RiskChip, StatusChip, TypeChip } from "@/components/contract-chips";
@@ -69,9 +73,19 @@ function formatDateOnly(value: string) {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const router = useRouter();
+  const allowed = can(user, "view_all");
+
+  // Дашборд — для ролей с обзором всей организации; юристов ведём в контракты
+  useEffect(() => {
+    if (user && !allowed) router.replace("/contracts");
+  }, [user, allowed, router]);
+
   const metrics = useQuery({
     queryKey: ["dashboard-metrics"],
     queryFn: () => api<DashboardMetrics>("/api/dashboard/metrics"),
+    enabled: allowed,
   });
   const contracts = useQuery({
     queryKey: ["contracts", "recent"],
