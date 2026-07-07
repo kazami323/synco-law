@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BadgeCheck, Eye, Plus, Scale, Shield, UserCog } from "lucide-react";
-import { useState } from "react";
+import { BadgeCheck, BellRing, Eye, Plus, Scale, Shield, UserCog } from "lucide-react";
+import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
@@ -236,11 +236,143 @@ export default function SettingsPage() {
         </div>
       </Card>
 
+      {/* Каналы уведомлений */}
+      <NotificationsCard />
+
       {/* Комплаенс-политики (Phase 2) */}
       {canManage && org.data && <PoliciesCard org={org.data} />}
 
       {modalOpen && <AddUserModal onClose={() => setModalOpen(false)} />}
     </div>
+  );
+}
+
+interface Channels {
+  email_enabled: boolean;
+  telegram_enabled: boolean;
+  telegram_linked: boolean;
+  bot_username: string | null;
+}
+
+function NotificationsCard() {
+  const qc = useQueryClient();
+  const [linkCode, setLinkCode] = useState<{ code: string; bot: string } | null>(
+    null
+  );
+  const [error, setError] = useState("");
+
+  const channels = useQuery({
+    queryKey: ["notification-channels"],
+    queryFn: () => api<Channels>("/api/notifications/channels"),
+    // Пока показан код привязки — ждём, что пользователь напишет боту
+    refetchInterval: linkCode ? 4000 : false,
+  });
+
+  const link = useMutation({
+    mutationFn: () =>
+      api<{ code: string; bot_username: string }>(
+        "/api/notifications/telegram/link",
+        { method: "POST" }
+      ),
+    onSuccess: (data) =>
+      setLinkCode({ code: data.code, bot: data.bot_username ?? "" }),
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : "Не удалось создать код"),
+  });
+
+  const unlink = useMutation({
+    mutationFn: () => api("/api/notifications/telegram/link", { method: "DELETE" }),
+    onSuccess: () => {
+      setLinkCode(null);
+      qc.invalidateQueries({ queryKey: ["notification-channels"] });
+    },
+  });
+
+  const c = channels.data;
+  const linked = c?.telegram_linked ?? false;
+  useEffect(() => {
+    if (linked) setLinkCode(null); // привязка завершилась
+  }, [linked]);
+
+  return (
+    <Card className="mt-6 p-6">
+      <div className="flex items-center gap-2 font-semibold">
+        <BellRing size={18} className="text-primary" />
+        Каналы уведомлений
+      </div>
+      <p className="text-sm text-on-surface-variant mt-1 mb-4">
+        Сроки, шаги согласования и подписания приходят внутрь системы, а также
+        на email и в Telegram.
+      </p>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between border border-outline-variant rounded-lg px-4 py-3">
+          <div className="text-sm font-medium">Email</div>
+          <Chip tone={c?.email_enabled ? "success" : "neutral"}>
+            {c?.email_enabled ? "Включено" : "Не настроено (SMTP)"}
+          </Chip>
+        </div>
+
+        <div className="border border-outline-variant rounded-lg px-4 py-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-sm font-medium">Telegram</div>
+            {!c?.telegram_enabled ? (
+              <Chip tone="neutral">Бот не настроен (TELEGRAM_BOT_TOKEN)</Chip>
+            ) : linked ? (
+              <div className="flex items-center gap-2">
+                <Chip tone="success">Привязан</Chip>
+                <Button
+                  variant="secondary"
+                  className="h-8 px-3 text-xs"
+                  loading={unlink.isPending}
+                  onClick={() => unlink.mutate()}
+                >
+                  Отвязать
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="secondary"
+                className="h-8 px-3 text-xs"
+                loading={link.isPending}
+                onClick={() => {
+                  setError("");
+                  link.mutate();
+                }}
+              >
+                Привязать Telegram
+              </Button>
+            )}
+          </div>
+
+          {linkCode && !linked && (
+            <div className="mt-3 text-sm bg-primary-fixed/40 rounded-lg p-3 space-y-1.5">
+              <div>
+                1. Откройте бота:{" "}
+                <a
+                  href={`https://t.me/${linkCode.bot}?start=${linkCode.code}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary font-medium hover:underline"
+                >
+                  @{linkCode.bot}
+                </a>
+              </div>
+              <div>
+                2. Отправьте команду:{" "}
+                <code className="bg-surface-container-lowest border border-outline-variant rounded px-1.5 py-0.5 text-xs">
+                  /start {linkCode.code}
+                </code>
+              </div>
+              <div className="text-xs text-on-surface-variant">
+                Ждём подтверждение — статус обновится автоматически.
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      {error && <div className="mt-3"><ErrorNote message={error} /></div>}
+    </Card>
   );
 }
 

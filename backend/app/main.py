@@ -20,7 +20,9 @@ from app.api import (
 from app.core.config import settings
 from app.db.base import async_session_factory, engine
 from app.services.notifications import create_deadline_notifications
+from app.services.notifications import deliver as notify_deliver
 from app.services.search import ensure_index
+from app.services.telegram import poll_link_updates, telegram_enabled
 
 settings.validate_runtime()
 
@@ -33,24 +35,44 @@ async def _deadline_notification_loop() -> None:
             async with async_session_factory() as session:
                 created = await create_deadline_notifications(session)
                 await session.commit()
+                for recipient, text in created:
+                    await notify_deliver(recipient, text)
                 if created:
-                    logger.info("deadline notifications created: %s", created)
+                    logger.info("deadline notifications created: %s", len(created))
         except Exception:
             logger.exception("deadline notification loop failed")
         await asyncio.sleep(24 * 60 * 60)
 
 
+async def _telegram_link_loop() -> None:
+    """Опрос Telegram getUpdates для привязки аккаунтов (если задан токен)."""
+    if not telegram_enabled():
+        return
+    offset: int | None = None
+    while True:
+        try:
+            async with async_session_factory() as session:
+                offset = await poll_link_updates(session, offset)
+        except Exception:
+            logger.exception("telegram link loop failed")
+        await asyncio.sleep(15)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await ensure_index()  # без ES поиск работает через SQL fallback
-    task = asyncio.create_task(_deadline_notification_loop())
-    app.state.deadline_notification_task = task
+    tasks = [
+        asyncio.create_task(_deadline_notification_loop()),
+        asyncio.create_task(_telegram_link_loop()),
+    ]
+    app.state.background_tasks = tasks
     try:
         yield
     finally:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+        for task in tasks:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
 app = FastAPI(
     title=settings.APP_NAME,

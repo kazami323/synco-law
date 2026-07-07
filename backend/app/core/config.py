@@ -39,7 +39,21 @@ class Settings(BaseSettings):
 
     # External APIs
     LEX_UZ_API_KEY: str = ""
+
+    # Email-уведомления (SMTP); пустой SMTP_HOST = канал выключен
     EMAIL_NOTIFY: bool = False
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "AI Legal Workspace <noreply@legal.uz>"
+    SMTP_TLS: bool = True
+
+    # Telegram-уведомления; пустой токен = канал выключен
+    TELEGRAM_BOT_TOKEN: str = ""
+
+    # E-IMZO: сервис серверной проверки подписи (DSV), опционально
+    EIMZO_DSV_URL: str = ""
 
     # CORS (адрес фронтенда Next.js)
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]

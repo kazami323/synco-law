@@ -8,7 +8,13 @@ from app.core.dependencies import get_current_user
 from app.db.base import get_db
 from app.db.models import Contract, Notification, User
 from app.db.schemas import NotificationOut
+from app.services.email import email_enabled
 from app.services.notifications import mark_notification_read
+from app.services.telegram import (
+    get_bot_username,
+    issue_link_code,
+    telegram_enabled,
+)
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -43,6 +49,48 @@ async def list_notifications(
         )
         for notification, contract_title in rows
     ]
+
+
+@router.get("/channels")
+async def notification_channels(
+    user: User = Depends(get_current_user),
+):
+    """Состояние каналов доставки для настроек."""
+    bot = await get_bot_username() if telegram_enabled() else None
+    return {
+        "email_enabled": email_enabled(),
+        "telegram_enabled": telegram_enabled(),
+        "telegram_linked": bool(user.telegram_chat_id),
+        "bot_username": bot,
+    }
+
+
+@router.post("/telegram/link")
+async def create_telegram_link(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Выдаёт одноразовый код привязки: отправьте боту /start <код>."""
+    if not telegram_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram-бот не настроен: добавьте TELEGRAM_BOT_TOKEN в backend/.env",
+        )
+    code = issue_link_code(user)
+    await db.commit()
+    bot = await get_bot_username()
+    return {"code": code, "bot_username": bot}
+
+
+@router.delete("/telegram/link")
+async def unlink_telegram(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user.telegram_chat_id = None
+    user.telegram_link_code = None
+    await db.commit()
+    return {"detail": "unlinked"}
 
 
 @router.post("/read-all")

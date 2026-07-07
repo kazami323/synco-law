@@ -6,6 +6,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.permissions import ROLE_PERMISSIONS
 from app.db.models import Contract, ContractDeadline, Notification, User
 from app.services.deadlines import days_left
+from app.services.email import send_email
+from app.services.telegram import send_telegram
+
+EMAIL_SUBJECT = "AI Legal Workspace — уведомление"
+
+
+def record_notification(
+    db: AsyncSession, user: User, text: str, contract_id=None
+) -> None:
+    """Внутрисистемное уведомление (строка в БД)."""
+    db.add(Notification(user_id=user.id, contract_id=contract_id, text=text))
+
+
+async def deliver(user: User, text: str, subject: str | None = None) -> None:
+    """Доставка во внешние каналы (после commit): email + Telegram.
+
+    Каналы без настроек молча выключены, ошибки не роняют вызывающий код.
+    """
+    if user.email:
+        await send_email(user.email, subject or EMAIL_SUBJECT, text)
+    if user.telegram_chat_id:
+        await send_telegram(user.telegram_chat_id, text)
 
 
 def _notification_text(contract: Contract, deadline: ContractDeadline, today: date) -> str:
@@ -32,7 +54,11 @@ async def create_deadline_notifications(
     *,
     organization_id=None,
     today: date | None = None,
-) -> int:
+) -> list[tuple[User, str]]:
+    """Создаёт внутрисистемные уведомления о сроках.
+
+    Возвращает пары (получатель, текст) — вызывающий код доставляет их во
+    внешние каналы ПОСЛЕ commit (см. deliver)."""
     current = today or date.today()
     window_end = current + timedelta(days=7)
     # Нижняя граница: по давно прошедшим срокам уведомления не рассылаем
@@ -52,7 +78,7 @@ async def create_deadline_notifications(
         query = query.where(Contract.organization_id == organization_id)
 
     rows = (await db.execute(query)).all()
-    created = 0
+    created: list[tuple[User, str]] = []
     for deadline, contract in rows:
         users = (
             await db.execute(
@@ -77,14 +103,8 @@ async def create_deadline_notifications(
             ).scalar_one_or_none()
             if duplicate is not None:
                 continue
-            db.add(
-                Notification(
-                    user_id=recipient.id,
-                    contract_id=contract.id,
-                    text=text,
-                )
-            )
-            created += 1
+            record_notification(db, recipient, text, contract.id)
+            created.append((recipient, text))
         deadline.is_notified = True
     return created
 

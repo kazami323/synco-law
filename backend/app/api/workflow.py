@@ -17,8 +17,9 @@ from app.api.contracts import get_visible_contract
 from app.core.dependencies import get_current_user
 from app.core.permissions import ROLE_PERMISSIONS
 from app.db.base import get_db
-from app.db.models import User, WorkflowState
+from app.db.models import Contract, User, WorkflowState
 from app.services import search as search_service
+from app.services.notifications import deliver, record_notification
 from app.services.signature import contract_hash, stub_signature
 from app.utils.audit import log_action
 
@@ -82,6 +83,80 @@ def available_actions(user: User, status: str) -> list[str]:
 
 class TransitionRequest(BaseModel):
     comment: str | None = None
+
+
+# Кого звать на следующий шаг: новый статус → право, дающее ход
+NEXT_STEP_PERMISSION: dict[str, str] = {
+    "analyzed": "approve",
+    "approved": "approve_finance",
+    "approved_finance": "approve",
+    "ready_to_sign": "sign",
+}
+
+ACTION_LABELS = {
+    "approve_legal": "юридически согласован",
+    "approve_finance": "согласован финансовым отделом",
+    "finalize": "передан на подписание",
+    "sign": "подписан",
+    "reject": "отклонён",
+}
+
+
+def _roles_with(permission: str) -> list[str]:
+    return [
+        role for role, rights in ROLE_PERMISSIONS.items() if permission in rights
+    ]
+
+
+async def _workflow_notifications(
+    db: AsyncSession, contract: Contract, action: str, actor: User, comment: str | None
+) -> list[tuple[User, str]]:
+    """Внутрисистемные уведомления о переходе; возвращает пары для доставки."""
+    pending: list[tuple[User, str]] = []
+    actor_name = actor.full_name or actor.username
+    label = ACTION_LABELS.get(action, action)
+
+    # Автору контракта — о любом чужом действии
+    if contract.created_by and contract.created_by != actor.id:
+        author = await db.get(User, contract.created_by)
+        if author and author.is_active:
+            text = f"Контракт «{contract.title}» {label} ({actor_name})"
+            if comment:
+                text += f": {comment}"
+            record_notification(db, author, text, contract.id)
+            pending.append((author, text))
+
+    # Следующей роли в цепочке — что контракт ждёт их шага
+    need = NEXT_STEP_PERMISSION.get(contract.status)
+    if need:
+        reviewers = (
+            (
+                await db.execute(
+                    select(User).where(
+                        User.organization_id == contract.organization_id,
+                        User.is_active.is_(True),
+                        User.role.in_(_roles_with(need)),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        text = f"Контракт «{contract.title}» ожидает вашего шага: {STAGE_WAIT_LABELS.get(contract.status, contract.status)}"
+        for reviewer in reviewers:
+            if reviewer.id == actor.id or reviewer.id == contract.created_by:
+                continue
+            record_notification(db, reviewer, text, contract.id)
+            pending.append((reviewer, text))
+    return pending
+
+
+STAGE_WAIT_LABELS = {
+    "analyzed": "юридическое согласование",
+    "approved": "финансовое согласование",
+    "approved_finance": "передача на подписание",
+    "ready_to_sign": "подписание",
+}
 
 
 @router.get("/contracts/{contract_id}/workflow")
@@ -176,8 +251,11 @@ async def transition(
         changes={"from": old_status, "to": contract.status, "comment": comment},
         ip_address=request.client.host if request.client else None,
     )
+    pending = await _workflow_notifications(db, contract, action, user, comment)
     await db.commit()
     await search_service.index_contract(contract)
+    for recipient, text in pending:
+        await deliver(recipient, text)
 
     return {
         "status": contract.status,

@@ -50,7 +50,7 @@ from app.db.schemas import (
     UpcomingDeadlineOut,
 )
 from app.services.deadlines import add_parsed_deadlines, days_left
-from app.services.notifications import create_deadline_notifications
+from app.services.notifications import create_deadline_notifications, deliver
 from app.services import search as search_service
 from app.services.signature import contract_hash, stub_signature
 from app.utils.audit import log_action
@@ -157,7 +157,9 @@ async def _create_contract_row(
         )
     )
     await add_parsed_deadlines(db, contract)
-    await create_deadline_notifications(db, organization_id=user.organization_id)
+    pending_deliveries = await create_deadline_notifications(
+        db, organization_id=user.organization_id
+    )
     await log_action(
         db,
         action="contract_created",
@@ -170,6 +172,8 @@ async def _create_contract_row(
     await db.commit()
     await db.refresh(contract)
     await search_service.index_contract(contract)
+    for recipient, text in pending_deliveries:
+        await deliver(recipient, text)
     return contract
 
 
@@ -511,8 +515,12 @@ async def get_deadlines(
 ):
     contract = await get_visible_contract(contract_id, user, db)
     if await add_parsed_deadlines(db, contract):
-        await create_deadline_notifications(db, organization_id=user.organization_id)
+        pending = await create_deadline_notifications(
+            db, organization_id=user.organization_id
+        )
         await db.commit()
+        for recipient, text in pending:
+            await deliver(recipient, text)
 
     today = date.today()
     result = await db.execute(
@@ -543,7 +551,9 @@ async def create_deadline(
     )
     db.add(deadline)
     await db.flush()
-    await create_deadline_notifications(db, organization_id=user.organization_id)
+    pending = await create_deadline_notifications(
+        db, organization_id=user.organization_id
+    )
     await log_action(
         db,
         action="deadline_created",
@@ -555,6 +565,8 @@ async def create_deadline(
     )
     await db.commit()
     await db.refresh(deadline)
+    for recipient, text in pending:
+        await deliver(recipient, text)
     return _deadline_out(deadline, date.today())
 
 
@@ -599,9 +611,12 @@ async def update_contract(
             )
         )
 
+    pending = []
     if content_changed:
         await add_parsed_deadlines(db, contract)
-        await create_deadline_notifications(db, organization_id=user.organization_id)
+        pending = await create_deadline_notifications(
+            db, organization_id=user.organization_id
+        )
 
     await log_action(
         db,
@@ -615,6 +630,8 @@ async def update_contract(
     await db.commit()
     await db.refresh(contract)
     await search_service.index_contract(contract)
+    for recipient, text in pending:
+        await deliver(recipient, text)
     return contract
 
 
