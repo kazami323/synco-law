@@ -50,11 +50,11 @@ export default function LoginPage() {
         </div>
         <div>
           <h1 className="text-4xl font-semibold leading-tight max-w-lg">
-            Операционная система юридического отдела
+            Контракты и риски под контролем
           </h1>
           <p className="mt-4 text-on-surface-variant max-w-md">
-            Управление контрактами, анализ рисков, соответствие
-            законодательству РУз.
+            Управляйте контрактами, анализируйте риски и следите за
+            законом — просто и быстро.
           </p>
           <div className="flex items-center gap-6 mt-8 pt-6 border-t border-outline-variant text-sm text-on-surface-variant">
             <span className="flex items-center gap-2">

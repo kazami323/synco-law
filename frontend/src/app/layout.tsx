@@ -15,7 +15,7 @@ const workSans = Work_Sans({
 
 export const metadata: Metadata = {
   title: "AI Legal Workspace",
-  description: "Операционная система юридического отдела",
+  description: "Управление контрактами и анализ рисков для юридического отдела",
 };
 
 export default function RootLayout({
