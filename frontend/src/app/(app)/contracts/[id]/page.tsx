@@ -10,12 +10,13 @@ import {
   FileSignature,
   History,
   Languages,
+  LayoutPanelLeft,
   Pencil,
   Plus,
   ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -69,6 +70,7 @@ function formatDateOnly(value: string) {
 
 export default function ContractPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { user } = useAuth();
   const qc = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
@@ -226,6 +228,14 @@ export default function ContractPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => router.push(`/contracts/${c.id}/workspace`)}
+          >
+            <span className="flex items-center gap-2">
+              <LayoutPanelLeft size={16} /> Рабочий стол
+            </span>
+          </Button>
           {canSign && (
             <Button onClick={openSignModal} disabled={signRequest.isPending}>
               <span className="flex items-center gap-2">
