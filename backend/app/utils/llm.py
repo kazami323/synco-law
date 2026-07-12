@@ -103,6 +103,33 @@ async def extract_pdf_text(pdf_data: bytes, filename: str) -> str:
     return text
 
 
+async def llm_text_stream(
+    *,
+    system: str,
+    messages: list[dict],
+    max_tokens: int = 4000,
+    usage: UsageCollector | None = None,
+):
+    """Потоковый текстовый ответ модели: yield'ит куски текста по мере генерации.
+
+    ContextVar-коллектор здесь не используется: генератор потребляется вне
+    контекста запроса, поэтому расход токенов пишется в явно переданный usage.
+    """
+    client = get_anthropic_client()
+    async with client.messages.stream(
+        model=settings.ANTHROPIC_MODEL,
+        max_tokens=max_tokens,
+        system=system,
+        messages=messages,
+    ) as stream:
+        async for text in stream.text_stream:
+            yield text
+        final = await stream.get_final_message()
+    if usage is not None:
+        usage.input_tokens += int(getattr(final.usage, "input_tokens", 0) or 0)
+        usage.output_tokens += int(getattr(final.usage, "output_tokens", 0) or 0)
+
+
 async def llm_text(
     *,
     system: str,

@@ -1,11 +1,13 @@
 """AI-эндпоинты (Weeks 7-8): анализ контракта, чат с агентами, генерация."""
 
 import asyncio
+import json
 import time
 import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,14 +18,20 @@ from app.core.dependencies import get_current_user, get_upload_user
 from app.core.permissions import require_permission
 from app.db.base import async_session_factory, get_db
 from app.db.models import AgentChatSession, AgentResult, Organization, User
-from app.agents.chat import AGENT_PROMPTS, agent_chat
+from app.agents.chat import AGENT_PROMPTS, agent_chat, build_agent_prompt
 from app.agents.orchestrator import ContractAnalysisOrchestrator
-from app.agents.response_standard import legal_basis_payload
+from app.agents.response_standard import append_legal_standard, legal_basis_payload
 from app.services import search as search_service
 from app.services.ai_usage import enforce_ai_access, record_ai_usage
 from app.utils.audit import log_action
 from app.utils.document_parser import parse_file, pdf_needs_ocr
-from app.utils.llm import collect_usage, extract_pdf_text, require_api_key
+from app.utils.llm import (
+    UsageCollector,
+    collect_usage,
+    extract_pdf_text,
+    llm_text_stream,
+    require_api_key,
+)
 from app.utils.upload_security import UploadSecurityError, secure_upload
 
 router = APIRouter(prefix="/api", tags=["ai-agents"])
@@ -135,14 +143,8 @@ class ChatRequest(BaseModel):
     session_id: uuid.UUID | None = None
 
 
-@router.post("/agents/chat")
-async def chat_with_agent(
-    data: ChatRequest,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+def _validate_chat_request(data: ChatRequest) -> None:
     require_api_key()
-    await enforce_ai_access(db, user)
     if data.agent not in AGENT_PROMPTS:
         raise HTTPException(
             status_code=400,
@@ -151,6 +153,11 @@ async def chat_with_agent(
     if not data.messages:
         raise HTTPException(status_code=400, detail="Пустая история сообщений")
 
+
+async def _resolve_chat_context(
+    data: ChatRequest, user: User, db: AsyncSession
+) -> tuple[str | None, str | None]:
+    """Контекст разговора: явный документ, контракт или прошлый контекст сессии."""
     existing_session: AgentChatSession | None = None
     if data.session_id is not None:
         existing_session = (
@@ -177,6 +184,18 @@ async def chat_with_agent(
         elif existing_session.document_text:
             context_text = existing_session.document_text
             context_label = existing_session.document_name
+    return context_text, context_label
+
+
+@router.post("/agents/chat")
+async def chat_with_agent(
+    data: ChatRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _validate_chat_request(data)
+    await enforce_ai_access(db, user)
+    context_text, context_label = await _resolve_chat_context(data, user, db)
 
     with collect_usage() as usage:
         chat_result = await agent_chat(
@@ -193,52 +212,129 @@ async def chat_with_agent(
         reply = chat_result.reply
         verified_sources = legal_basis_payload(chat_result.legal_sources)
     record_ai_usage(db, user, usage, endpoint="agent_chat", agent=data.agent)
-    if data.session_id is not None:
-        session = (
-            await db.execute(
-                select(AgentChatSession)
-                .where(
-                    AgentChatSession.id == data.session_id,
-                    AgentChatSession.user_id == user.id,
-                    AgentChatSession.organization_id == user.organization_id,
-                )
-                .with_for_update()
-            )
-        ).scalar_one_or_none()
-        if session is None:
-            if user.organization_id is None:
-                raise HTTPException(status_code=400, detail="Create an organization first")
-            session = AgentChatSession(
-                id=data.session_id,
-                organization_id=user.organization_id,
-                user_id=user.id,
-                agent=data.agent,
-                title="Новый чат",
-                messages=[],
-            )
-            db.add(session)
-        stored_messages = [m.model_dump() for m in data.messages]
-        stored_messages.append(
-            {
-                "role": "assistant",
-                "content": reply,
-                "agent": data.agent,
-                "sources": verified_sources,
-            }
-        )
-        session.agent = data.agent
-        session.messages = stored_messages[-100:]
-        session.title = _chat_title(stored_messages)
-        if data.contract_id is not None:
-            session.contract_id = data.contract_id
-            session.document_name = None
-            session.document_text = None
-        elif data.document_text is not None:
-            session.contract_id = None
-            session.document_name = data.document_name
-            session.document_text = data.document_text
+    await _store_chat_session(db, user, data, reply, verified_sources)
     await db.commit()
     return {"reply": reply, "sources": verified_sources}
+
+
+async def _store_chat_session(
+    db: AsyncSession,
+    user: User,
+    data: ChatRequest,
+    reply: str,
+    verified_sources: list[dict],
+) -> None:
+    if data.session_id is None:
+        return
+    session = (
+        await db.execute(
+            select(AgentChatSession)
+            .where(
+                AgentChatSession.id == data.session_id,
+                AgentChatSession.user_id == user.id,
+                AgentChatSession.organization_id == user.organization_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if session is None:
+        if user.organization_id is None:
+            raise HTTPException(status_code=400, detail="Create an organization first")
+        session = AgentChatSession(
+            id=data.session_id,
+            organization_id=user.organization_id,
+            user_id=user.id,
+            agent=data.agent,
+            title="Новый чат",
+            messages=[],
+        )
+        db.add(session)
+    stored_messages = [m.model_dump() for m in data.messages]
+    stored_messages.append(
+        {
+            "role": "assistant",
+            "content": reply,
+            "agent": data.agent,
+            "sources": verified_sources,
+        }
+    )
+    session.agent = data.agent
+    session.messages = stored_messages[-100:]
+    session.title = _chat_title(stored_messages)
+    if data.contract_id is not None:
+        session.contract_id = data.contract_id
+        session.document_name = None
+        session.document_text = None
+    elif data.document_text is not None:
+        session.contract_id = None
+        session.document_name = data.document_name
+        session.document_text = data.document_text
+
+
+@router.post("/agents/chat/stream")
+async def chat_with_agent_stream(
+    data: ChatRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Потоковый чат (SSE): текст уходит юристу по мере генерации.
+
+    События: {"type":"delta","text"} — кусок текста; {"type":"done","reply",
+    "sources"} — финальный ответ после проверки цитат (заменяет черновой текст);
+    {"type":"error","detail"}. Проверка источников выполняется по полному
+    тексту, поэтому стрим показывает черновик, а финал приходит проверенным.
+    """
+    _validate_chat_request(data)
+    await enforce_ai_access(db, user)
+    context_text, context_label = await _resolve_chat_context(data, user, db)
+    prompt = await build_agent_prompt(
+        data.agent,
+        [m.model_dump() for m in data.messages],
+        context_document=context_text,
+        context_label=context_label,
+        db=db,
+    )
+    user_id = user.id
+
+    def _sse(payload: dict) -> str:
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    async def event_stream():
+        parts: list[str] = []
+        usage = UsageCollector()
+        try:
+            async for delta in llm_text_stream(
+                system=prompt.system,
+                messages=prompt.history,
+                max_tokens=4000,
+                usage=usage,
+            ):
+                parts.append(delta)
+                yield _sse({"type": "delta", "text": delta})
+            reply = append_legal_standard("".join(parts), prompt.legal_sources)
+            verified_sources = legal_basis_payload(prompt.legal_sources)
+            # Ответ уже отправляется клиенту — сохраняем отдельной сессией БД
+            async with async_session_factory() as store_db:
+                fresh_user = await store_db.get(User, user_id)
+                if fresh_user is not None:
+                    record_ai_usage(
+                        store_db, fresh_user, usage, endpoint="agent_chat", agent=data.agent
+                    )
+                    await _store_chat_session(
+                        store_db, fresh_user, data, reply, verified_sources
+                    )
+                    await store_db.commit()
+            yield _sse({"type": "done", "reply": reply, "sources": verified_sources})
+        except Exception as exc:  # ошибку доносим событием — HTTP уже 200
+            yield _sse(
+                {"type": "error", "detail": str(exc) or "Не удалось получить ответ агента"}
+            )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 def _chat_title(messages: list[dict]) -> str:

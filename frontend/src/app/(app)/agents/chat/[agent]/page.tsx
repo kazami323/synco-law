@@ -17,7 +17,7 @@ import {
   MessageList,
 } from "@/components/ai-chat/message-list";
 import { getAgent } from "@/lib/agents";
-import { api, ApiError, apiParseFile } from "@/lib/api";
+import { api, ApiError, apiChatStream, apiParseFile } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { ContractList } from "@/lib/types";
 
@@ -178,6 +178,8 @@ export default function AgentChatPage() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Живой черновик потокового ответа: null — стрим не идёт
+  const [streamingDraft, setStreamingDraft] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [docs, setDocs] = useState<AttachedDocument[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -416,24 +418,42 @@ export default function AgentChatPage() {
   }
 
   const send = useMutation({
-    mutationFn: async ({ sessionId, agentKey, history, contractId, docs }: SendPayload) =>
-      api<{ reply: string; sources: ChatMessage["sources"] }>("/api/agents/chat", {
-        method: "POST",
-        body: {
-          agent: agentKey,
-          messages: history.map(({ role, content, agent: messageAgent, feedback, sources }) => ({
-            role,
-            content,
-            agent: messageAgent,
-            feedback,
-            sources: sources ?? [],
-          })),
-          contract_id: contractId || null,
-          document_text: contractId ? null : combinedDocumentText(docs),
-          document_name: contractId ? null : documentNames(docs),
-          session_id: sessionId,
-        },
-      }),
+    mutationFn: async ({ sessionId, agentKey, history, contractId, docs }: SendPayload) => {
+      const body = {
+        agent: agentKey,
+        messages: history.map(({ role, content, agent: messageAgent, feedback, sources }) => ({
+          role,
+          content,
+          agent: messageAgent,
+          feedback,
+          sources: sources ?? [],
+        })),
+        contract_id: contractId || null,
+        document_text: contractId ? null : combinedDocumentText(docs),
+        document_name: contractId ? null : documentNames(docs),
+        session_id: sessionId,
+      };
+      try {
+        // Потоковый ответ: текст появляется по мере генерации
+        return await apiChatStream<NonNullable<ChatMessage["sources"]>>(body, (text) => {
+          if (activeSessionIdRef.current !== sessionId) return;
+          setStreamingDraft((current) => (current ?? "") + text);
+        });
+      } catch (streamError) {
+        // Старый бэкенд без /stream — обычный запрос
+        if (
+          streamError instanceof ApiError &&
+          (streamError.status === 404 || streamError.status === 405)
+        ) {
+          return api<{ reply: string; sources: ChatMessage["sources"] }>(
+            "/api/agents/chat",
+            { method: "POST", body }
+          );
+        }
+        throw streamError;
+      }
+    },
+    onSettled: () => setStreamingDraft(null),
     onSuccess: (data, payload) => {
       const finalMessages: ChatMessage[] = [
         ...payload.history,
@@ -772,9 +792,21 @@ export default function AgentChatPage() {
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           <MessageList
-            messages={messages}
+            messages={
+              streamingDraft !== null
+                ? [
+                    ...messages,
+                    {
+                      role: "assistant",
+                      content: streamingDraft,
+                      agent,
+                      sources: [],
+                    },
+                  ]
+                : messages
+            }
             agentKey={agent}
-            pending={send.isPending}
+            pending={send.isPending && streamingDraft === null}
             bottomRef={bottomRef}
             onPrompt={sendText}
             onRegenerate={regenerateLastAnswer}

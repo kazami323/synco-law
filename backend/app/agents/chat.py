@@ -94,13 +94,22 @@ class AgentChatResult:
     legal_sources: list[dict]
 
 
-async def agent_chat(
+@dataclass
+class AgentChatPrompt:
+    """Собранный промпт чата: общий для обычного и потокового ответа."""
+
+    system: str
+    history: list[dict]
+    legal_sources: list[dict]
+
+
+async def build_agent_prompt(
     agent: str,
     messages: list[dict],
     context_document: str | None = None,
     context_label: str | None = None,
     db: AsyncSession | None = None,
-) -> AgentChatResult:
+) -> AgentChatPrompt:
     system = AGENT_PROMPTS.get(agent, AGENT_PROMPTS["analyzer"])
     system += f"\n\n{LEGAL_RESPONSE_STANDARD}"
     legal_sources = await _legal_sources_for_chat(
@@ -142,10 +151,29 @@ async def agent_chat(
                     "content": history[index]["content"] + context,
                 }
                 break
-    reply = await llm.llm_text(system=system, messages=history, max_tokens=4000)
+    return AgentChatPrompt(system=system, history=history, legal_sources=legal_sources)
+
+
+async def agent_chat(
+    agent: str,
+    messages: list[dict],
+    context_document: str | None = None,
+    context_label: str | None = None,
+    db: AsyncSession | None = None,
+) -> AgentChatResult:
+    prompt = await build_agent_prompt(
+        agent,
+        messages,
+        context_document=context_document,
+        context_label=context_label,
+        db=db,
+    )
+    reply = await llm.llm_text(
+        system=prompt.system, messages=prompt.history, max_tokens=4000
+    )
     return AgentChatResult(
-        reply=append_legal_standard(reply, legal_sources),
-        legal_sources=legal_sources,
+        reply=append_legal_standard(reply, prompt.legal_sources),
+        legal_sources=prompt.legal_sources,
     )
 
 

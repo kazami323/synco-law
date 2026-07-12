@@ -111,6 +111,91 @@ export async function apiDownload(path: string, filename: string): Promise<void>
   URL.revokeObjectURL(url);
 }
 
+export interface ChatStreamResult<TSources = Array<Record<string, unknown>>> {
+  reply: string;
+  sources: TSources;
+}
+
+type ChatStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "done"; reply: string; sources: unknown }
+  | { type: "error"; detail: string };
+
+/**
+ * Потоковый чат с агентом (SSE). Вызывает onDelta на каждый кусок текста,
+ * резолвится финальным проверенным ответом. Бросает ApiError, если стрим
+ * недоступен (например, старый бэкенд) — вызывающий код делает фолбэк.
+ */
+export async function apiChatStream<TSources = Array<Record<string, unknown>>>(
+  body: unknown,
+  onDelta: (text: string) => void,
+  retryAuth = true
+): Promise<ChatStreamResult<TSources>> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/agents/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(0, "Сервер недоступен. Проверьте, что backend запущен.");
+  }
+  if (res.status === 401 && retryAuth) {
+    if (await refreshSession()) return apiChatStream(body, onDelta, false);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("auth:expired"));
+    }
+  }
+  if (!res.ok || !res.body) {
+    let detail = res.statusText;
+    try {
+      detail = responseDetail(await res.json(), detail);
+    } catch {
+      // Keep statusText when response body is not JSON.
+    }
+    throw new ApiError(res.status, detail);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResult: ChatStreamResult<TSources> | null = null;
+
+  const handleLine = (line: string) => {
+    if (!line.startsWith("data:")) return;
+    let event: ChatStreamEvent;
+    try {
+      event = JSON.parse(line.slice(5).trim());
+    } catch {
+      return;
+    }
+    if (event.type === "delta") onDelta(event.text);
+    else if (event.type === "done")
+      finalResult = {
+        reply: event.reply,
+        sources: (event.sources ?? []) as TSources,
+      };
+    else if (event.type === "error") throw new ApiError(502, event.detail);
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) handleLine(line.trim());
+  }
+  if (buffer.trim()) handleLine(buffer.trim());
+
+  if (!finalResult) {
+    throw new ApiError(0, "Поток ответа оборвался. Попробуйте ещё раз.");
+  }
+  return finalResult;
+}
+
 const UPLOAD_NETWORK_ERROR =
   "Не удалось связаться с сервером обработки документов. Проверьте интернет и повторите — если не поможет, сервер сейчас недоступен.";
 
