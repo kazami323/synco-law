@@ -314,6 +314,30 @@ async def test_parse_scanned_pdf_via_background_job(
     assert status.json()["extraction_method"] == "ocr"
 
 
+def test_pdf_chunks_split_and_limits():
+    """Нарезка PDF для OCR: по 10 страниц, с потолком в 150 страниц."""
+    import io
+
+    import pytest
+    from pypdf import PdfWriter
+
+    from app.utils.llm import OCR_MAX_PAGES, _pdf_chunks
+
+    def make_pdf(pages: int) -> bytes:
+        writer = PdfWriter()
+        for _ in range(pages):
+            writer.add_blank_page(width=200, height=200)
+        buffer = io.BytesIO()
+        writer.write(buffer)
+        return buffer.getvalue()
+
+    chunks = _pdf_chunks(make_pdf(25))
+    assert [label for label, _ in chunks] == ["стр. 1-10", "стр. 11-20", "стр. 21-25"]
+
+    with pytest.raises(ValueError, match="Разбейте файл"):
+        _pdf_chunks(make_pdf(OCR_MAX_PAGES + 1))
+
+
 async def test_parse_job_of_other_user_is_hidden(client, admin_headers, mock_llm, monkeypatch):
     """Чужую задачу распознавания нельзя прочитать по job_id."""
     import io

@@ -1,7 +1,10 @@
 """Клиент Anthropic API и общие хелперы вызова LLM для агентов."""
 
+import asyncio
 import base64
+import io
 import json
+import logging
 import re
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -9,8 +12,11 @@ from dataclasses import dataclass
 
 from anthropic import AsyncAnthropic
 from fastapi import HTTPException
+from pypdf import PdfReader, PdfWriter
 
 from app.core.config import settings
+
+logger = logging.getLogger("app.llm")
 
 _client: AsyncAnthropic | None = None
 
@@ -55,20 +61,66 @@ def require_api_key() -> None:
         )
 
 
-async def extract_pdf_text(pdf_data: bytes, filename: str) -> str:
-    """Use Claude PDF vision as OCR fallback for image-only documents."""
-    require_api_key()
+# OCR сканов: у Claude API лимиты на PDF (100 страниц, ~32 МБ запроса),
+# а один вызов на весь скан ещё и упирается в таймаут. Поэтому режем PDF
+# на куски и распознаём их параллельно.
+OCR_CHUNK_PAGES = 10
+OCR_MAX_PAGES = 150
+OCR_MAX_CHUNK_BYTES = 25 * 1024 * 1024  # base64 раздувает на треть, лимит API 32 МБ
+OCR_PARALLEL = 5
+
+OCR_SYSTEM = (
+    "Ты выполняешь точное OCR-распознавание юридических документов. "
+    "Верни только полный распознанный текст без анализа и комментариев. "
+    "Сохраняй заголовки, нумерацию, реквизиты и таблицы. "
+    "Не додумывай неразборчивые фрагменты: отмечай их как [неразборчиво]."
+)
+
+
+def _pdf_slice(reader: PdfReader, start: int, stop: int) -> bytes:
+    writer = PdfWriter()
+    for index in range(start, stop):
+        writer.add_page(reader.pages[index])
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def _pdf_chunks(pdf_data: bytes) -> list[tuple[str, bytes]]:
+    """Нарезка PDF на куски для OCR: [(подпись 'стр. 1-10', байты), ...]."""
+    reader = PdfReader(io.BytesIO(pdf_data))
+    total = len(reader.pages)
+    if total > OCR_MAX_PAGES:
+        raise ValueError(
+            f"Скан из {total} страниц слишком большой для распознавания. "
+            f"Разбейте файл на части до {OCR_MAX_PAGES} страниц."
+        )
+    chunks: list[tuple[str, bytes]] = []
+    for start in range(0, total, OCR_CHUNK_PAGES):
+        stop = min(start + OCR_CHUNK_PAGES, total)
+        data = _pdf_slice(reader, start, stop)
+        if len(data) <= OCR_MAX_CHUNK_BYTES:
+            chunks.append((f"стр. {start + 1}-{stop}", data))
+            continue
+        # Кусок слишком тяжёлый (жирные сканы) — постранично
+        for page in range(start, stop):
+            page_data = _pdf_slice(reader, page, page + 1)
+            if len(page_data) > OCR_MAX_CHUNK_BYTES:
+                raise ValueError(
+                    f"Страница {page + 1} скана весит больше 25 МБ — "
+                    "пересканируйте документ с меньшим разрешением."
+                )
+            chunks.append((f"стр. {page + 1}", page_data))
+    return chunks
+
+
+async def _ocr_chunk(label: str, data: bytes, filename: str) -> str:
     client = get_anthropic_client()
     try:
         response = await client.messages.create(
             model=settings.ANTHROPIC_MODEL,
             max_tokens=16_000,
-            system=(
-                "Ты выполняешь точное OCR-распознавание юридических документов. "
-                "Верни только полный распознанный текст без анализа и комментариев. "
-                "Сохраняй заголовки, нумерацию, реквизиты и таблицы. "
-                "Не додумывай неразборчивые фрагменты: отмечай их как [неразборчиво]."
-            ),
+            system=OCR_SYSTEM,
             messages=[
                 {
                     "role": "user",
@@ -78,9 +130,9 @@ async def extract_pdf_text(pdf_data: bytes, filename: str) -> str:
                             "source": {
                                 "type": "base64",
                                 "media_type": "application/pdf",
-                                "data": base64.b64encode(pdf_data).decode("ascii"),
+                                "data": base64.b64encode(data).decode("ascii"),
                             },
-                            "title": filename[:255],
+                            "title": f"{filename[:200]} ({label})",
                         },
                         {
                             "type": "text",
@@ -92,12 +144,38 @@ async def extract_pdf_text(pdf_data: bytes, filename: str) -> str:
             timeout=max(settings.ANTHROPIC_TIMEOUT_SECONDS, 180),
         )
     except Exception as exc:
-        raise ValueError("Не удалось распознать сканированный PDF через AI OCR") from exc
+        # Настоящая причина — в лог; пользователю — компактная суть
+        logger.exception("OCR failed for %s %s", filename, label)
+        reason = str(exc).strip().splitlines()[0][:180] if str(exc) else "нет ответа API"
+        raise ValueError(f"Ошибка распознавания ({label}): {reason}") from exc
     collector = _usage_collector.get()
     if collector is not None:
         collector.input_tokens += int(getattr(response.usage, "input_tokens", 0) or 0)
         collector.output_tokens += int(getattr(response.usage, "output_tokens", 0) or 0)
-    text = "".join(block.text for block in response.content if block.type == "text").strip()
+    return "".join(
+        block.text for block in response.content if block.type == "text"
+    ).strip()
+
+
+async def extract_pdf_text(pdf_data: bytes, filename: str) -> str:
+    """OCR скана через Claude PDF vision: кусками, параллельно."""
+    require_api_key()
+    try:
+        chunks = _pdf_chunks(pdf_data)
+    except ValueError:
+        raise
+    except Exception as exc:
+        logger.exception("OCR: cannot split PDF %s", filename)
+        raise ValueError("Не удалось прочитать структуру PDF для распознавания") from exc
+
+    semaphore = asyncio.Semaphore(OCR_PARALLEL)
+
+    async def bounded(label: str, data: bytes) -> str:
+        async with semaphore:
+            return await _ocr_chunk(label, data, filename)
+
+    parts = await asyncio.gather(*(bounded(label, data) for label, data in chunks))
+    text = "\n\n".join(part for part in parts if part).strip()
     if not text:
         raise ValueError("Не удалось распознать текст сканированного PDF")
     return text
