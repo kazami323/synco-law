@@ -33,5 +33,19 @@
     "doc_type": "law",
     "language": "ru",
     "url": "https://lex.uz/ru/docs/10872"
+  },
+  {
+    "key": "llc_law_2001",
+    "title": "Об обществах с ограниченной и дополнительной ответственностью (310-II, действует до 22.07.2026)",
+    "doc_type": "law",
+    "language": "ru",
+    "url": "https://lex.uz/ru/docs/18793"
+  },
+  {
+    "key": "llc_law_2026",
+    "title": "Об обществах с ограниченной ответственностью (ЗРУ-1137 от 21.04.2026)",
+    "doc_type": "law",
+    "language": "ru",
+    "url": "https://lex.uz/ru/docs/8152146"
   }
 ]
