@@ -131,16 +131,31 @@ export async function apiChatStream<TSources = Array<Record<string, unknown>>>(
   onDelta: (text: string) => void,
   retryAuth = true
 ): Promise<ChatStreamResult<TSources>> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}/api/agents/chat/stream`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new ApiError(0, "Сервер недоступен. Проверьте, что backend запущен.");
+  // Сетевой сбой (перезапуск бэкенда, мигнувший туннель) — короткие паузы
+  // и повтор, прежде чем показывать ошибку пользователю
+  const attempts = [0, 2500, 5000];
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < attempts.length; attempt++) {
+    if (attempts[attempt] > 0) {
+      await new Promise((resolve) => setTimeout(resolve, attempts[attempt]));
+    }
+    try {
+      res = await fetch(`${API_URL}/api/agents/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      break;
+    } catch {
+      res = null;
+    }
+  }
+  if (res === null) {
+    throw new ApiError(
+      0,
+      "Сервер сейчас недоступен (возможно, перезапускается). Подождите полминуты и отправьте вопрос ещё раз."
+    );
   }
   if (res.status === 401 && retryAuth) {
     if (await refreshSession()) return apiChatStream(body, onDelta, false);
@@ -180,15 +195,24 @@ export async function apiChatStream<TSources = Array<Record<string, unknown>>>(
     else if (event.type === "error") throw new ApiError(502, event.detail);
   };
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) handleLine(line.trim());
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) handleLine(line.trim());
+    }
+    if (buffer.trim()) handleLine(buffer.trim());
+  } catch (readError) {
+    if (readError instanceof ApiError) throw readError;
+    // Обрыв соединения посреди стрима — не пугаем техническим текстом
+    throw new ApiError(
+      0,
+      "Соединение прервалось во время ответа. Отправьте вопрос ещё раз."
+    );
   }
-  if (buffer.trim()) handleLine(buffer.trim());
 
   if (!finalResult) {
     throw new ApiError(0, "Поток ответа оборвался. Попробуйте ещё раз.");
