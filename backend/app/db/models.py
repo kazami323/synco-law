@@ -1,4 +1,5 @@
 import enum
+import secrets
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
@@ -14,6 +15,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     text,
     text as sql_text,
 )
@@ -24,6 +26,10 @@ from app.db.base import Base
 
 # Размерность эмбеддингов для семантического поиска (voyage-3 / text-embedding-3-small)
 EMBEDDING_DIM = 1536
+
+
+def make_invite_code() -> str:
+    return secrets.token_hex(5).upper()
 
 
 class Role(str, enum.Enum):
@@ -68,6 +74,9 @@ class Organization(Base):
     address: Mapped[str | None] = mapped_column(String(1024))
     country: Mapped[str] = mapped_column(String(128), server_default="Uzbekistan")
     storage_limit: Mapped[int] = mapped_column(Integer, server_default="1000")  # GB
+    invite_code: Mapped[str] = mapped_column(
+        String(32), unique=True, index=True, default=make_invite_code
+    )
     # Внутренние комплаенс-политики: их проверяет Compliance Agent (Phase 2)
     compliance_policies: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
@@ -93,6 +102,8 @@ class User(Base):
     )
     department_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    mfa_secret_encrypted: Mapped[str | None] = mapped_column(Text)
     # Telegram-уведомления: chat_id после привязки, link_code — одноразовый код
     telegram_chat_id: Mapped[str | None] = mapped_column(String(64))
     telegram_link_code: Mapped[str | None] = mapped_column(String(64), index=True)
@@ -104,6 +115,42 @@ class User(Base):
     )
 
     organization: Mapped[Organization | None] = relationship(back_populates="users")
+
+
+class RefreshSession(Base):
+    __tablename__ = "refresh_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    user_agent: Mapped[str | None] = mapped_column(String(512))
+    ip_address: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
 
 
 class Project(Base):
@@ -344,3 +391,127 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )
+
+
+class AgentChatSession(Base):
+    __tablename__ = "agent_chat_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    agent: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(256), server_default="Новый чат")
+    messages: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    contract_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id", ondelete="SET NULL"), index=True
+    )
+    document_name: Mapped[str | None] = mapped_column(String(512))
+    document_text: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=datetime.utcnow, index=True
+    )
+
+
+class AIUsageLog(Base):
+    __tablename__ = "ai_usage_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    endpoint: Mapped[str] = mapped_column(String(128), index=True)
+    agent: Mapped[str | None] = mapped_column(String(64))
+    model: Mapped[str] = mapped_column(String(128))
+    input_tokens: Mapped[int] = mapped_column(Integer, server_default="0")
+    output_tokens: Mapped[int] = mapped_column(Integer, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), index=True
+    )
+
+
+class LegalDocument(Base):
+    """Source legal act imported from public legal databases such as lex.uz."""
+
+    __tablename__ = "legal_documents"
+    __table_args__ = (
+        UniqueConstraint(
+            "source", "source_id", "language", name="uq_legal_documents_source_lang"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    source: Mapped[str] = mapped_column(String(64), server_default="lex.uz", index=True)
+    source_id: Mapped[str] = mapped_column(String(64), index=True)
+    language: Mapped[str] = mapped_column(String(16), server_default="ru", index=True)
+    jurisdiction: Mapped[str] = mapped_column(String(128), server_default="Uzbekistan")
+    doc_type: Mapped[str | None] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(1024))
+    number: Mapped[str | None] = mapped_column(String(128))
+    url: Mapped[str] = mapped_column(String(2048))
+    adopted_at: Mapped[date | None] = mapped_column(Date)
+    effective_at: Mapped[date | None] = mapped_column(Date)
+    current_revision_date: Mapped[date | None] = mapped_column(Date, index=True)
+    status: Mapped[str] = mapped_column(String(32), server_default="active", index=True)
+    extra_data: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=datetime.utcnow
+    )
+
+    articles: Mapped[list["LegalArticle"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
+
+
+class LegalArticle(Base):
+    """Article-level chunk used by Law Agent retrieval."""
+
+    __tablename__ = "legal_articles"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id", "source_article_id", name="uq_legal_articles_source_article"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_documents.id", ondelete="CASCADE"), index=True
+    )
+    source_article_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    article_number: Mapped[str | None] = mapped_column(String(64), index=True)
+    title: Mapped[str | None] = mapped_column(String(1024))
+    content: Mapped[str] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    content_vector = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, server_default="0", index=True)
+    url: Mapped[str | None] = mapped_column(String(2048))
+    extra_data: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=datetime.utcnow
+    )
+
+    document: Mapped[LegalDocument] = relationship(back_populates="articles")

@@ -7,13 +7,13 @@ import {
   useEffect,
   useState,
 } from "react";
-import { api, getToken, setToken } from "@/lib/api";
+import { api } from "@/lib/api";
 import type { User } from "@/lib/types";
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<User>;
+  login: (email: string, password: string, mfaCode?: string) => Promise<User>;
   logout: () => void;
   refresh: () => Promise<void>;
 }
@@ -26,15 +26,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     await Promise.resolve();
-    if (!getToken()) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
     try {
-      setUser(await api<User>("/api/auth/me"));
+      // A public visitor normally has no session. Do not emit the global
+      // "session expired" redirect while bootstrapping login/register pages.
+      setUser(await api<User>("/api/auth/me", {}, false));
     } catch {
-      setToken(null);
       setUser(null);
     } finally {
       setLoading(false);
@@ -48,12 +44,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.clearTimeout(timeout);
   }, [refresh]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const data = await api<{ access_token: string }>("/api/auth/login", {
+  const login = useCallback(async (email: string, password: string, mfaCode?: string) => {
+    await api<{ access_token: string }>("/api/auth/login", {
       method: "POST",
-      body: { email, password },
+      body: { email, password, mfa_code: mfaCode || null },
     });
-    setToken(data.access_token);
     const me = await api<User>("/api/auth/me");
     setUser(me);
     setLoading(false);
@@ -61,9 +56,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    setToken(null);
+    void api("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     setUser(null);
     window.location.href = "/login";
+  }, []);
+
+  useEffect(() => {
+    const expired = () => {
+      setUser(null);
+      window.location.href = "/login";
+    };
+    window.addEventListener("auth:expired", expired);
+    return () => window.removeEventListener("auth:expired", expired);
   }, []);
 
   return (

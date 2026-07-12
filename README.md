@@ -71,6 +71,76 @@ curl http://localhost:8000/health
 docker compose --profile search up -d elasticsearch
 ```
 
+## Legal RAG: локальная база lex.uz для Law Agent
+
+Law Agent умеет работать через локальную базу НПА: документы lex.uz
+скачиваются в Postgres, режутся на статьи и индексируются в Elasticsearch
+(если он включен). API-ключ lex.uz для этого не нужен.
+
+```bash
+cd backend
+.venv\Scripts\activate
+alembic upgrade head
+python -m scripts.ingest_lexuz
+```
+
+По умолчанию импортируются базовые акты для договорной работы:
+ГК РУз (части 1 и 2), ТК, НК и закон «О договорно-правовой базе деятельности
+хозяйствующих субъектов». Добавить отдельный документ можно так:
+
+```bash
+python -m scripts.ingest_lexuz --url https://lex.uz/ru/docs/10872
+```
+
+Если Elasticsearch поднят позже, переиндексируйте уже загруженные статьи:
+
+```bash
+python -m scripts.reindex_laws
+```
+
+Проверка через API после логина и создания организации:
+
+```text
+GET /api/legal/search?q=правовая экспертиза хозяйственного договора
+GET /api/legal/documents
+```
+
+После импорта агент `law` и полный анализ договора автоматически подмешивают
+релевантные статьи в промпт и возвращают ссылки на конкретные якоря lex.uz.
+
+Автообновление legal-базы можно включить через env:
+
+```bash
+LEGAL_REFRESH_ENABLED=true
+LEGAL_REFRESH_INTERVAL_HOURS=168
+```
+
+## Backup / Restore / Product Docs
+
+Локальный backup:
+
+```powershell
+cd backend
+.\scripts\backup.ps1
+```
+
+Restore:
+
+```powershell
+.\scripts\restore.ps1 -BackupPath .\backups\<timestamp> -RestoreMinio
+python -m scripts.reindex_search
+python -m scripts.reindex_laws
+```
+
+Документы для пилота и production readiness:
+
+- [Privacy Policy](docs/PRIVACY_POLICY.md)
+- [Terms of Service](docs/TERMS_OF_SERVICE.md)
+- [AI Disclaimer](docs/AI_DISCLAIMER.md)
+- [Backup And Restore](docs/BACKUP_RESTORE.md)
+- [Security Checklist](docs/SECURITY_CHECKLIST.md)
+- [Pilot Plan](docs/PILOT_PLAN.md)
+
 ## Demo Seed
 
 Для демо-данных без ручных QA-записей:

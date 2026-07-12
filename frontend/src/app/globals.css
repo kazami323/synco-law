@@ -92,12 +92,29 @@ h1, h2, h3, h4 {
   to { opacity: 1; transform: none; }
 }
 
+/* Пузырь сообщения появляется снизу */
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+/* Печатающие точки «агент думает» */
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
+
 .animate-fade-in-up { animation: fade-in-up 0.3s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
 .animate-fade-in { animation: fade-in 0.15s ease-out both; }
 .animate-modal-pop { animation: modal-pop 0.2s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+.animate-msg-in { animation: msg-in 0.28s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
+.typing-dot { animation: typing-dot 1.2s infinite ease-in-out; }
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-in-up, .animate-fade-in, .animate-modal-pop { animation: none; }
+  .animate-fade-in-up, .animate-fade-in, .animate-modal-pop,
+  .animate-msg-in, .typing-dot { animation: none; }
 }
 
 /* ===== Вход/регистрация: карточка с переезжающей цветной панелью ===== */

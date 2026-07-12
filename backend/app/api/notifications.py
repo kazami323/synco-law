@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 @router.get("/", response_model=list[NotificationOut])
 async def list_notifications(
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=100),
     unread_only: bool = False,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

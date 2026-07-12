@@ -1,0 +1,37 @@
+[
+  {
+    "key": "civil_code_part_1",
+    "title": "Гражданский кодекс Республики Узбекистан (часть первая)",
+    "doc_type": "code",
+    "language": "ru",
+    "url": "https://lex.uz/ru/docs/111181"
+  },
+  {
+    "key": "civil_code_part_2",
+    "title": "Гражданский кодекс Республики Узбекистан (часть вторая)",
+    "doc_type": "code",
+    "language": "ru",
+    "url": "https://lex.uz/ru/docs/180550"
+  },
+  {
+    "key": "labor_code",
+    "title": "Трудовой кодекс Республики Узбекистан",
+    "doc_type": "code",
+    "language": "ru",
+    "url": "https://lex.uz/ru/docs/6257291"
+  },
+  {
+    "key": "tax_code",
+    "title": "Налоговый кодекс Республики Узбекистан",
+    "doc_type": "code",
+    "language": "ru",
+    "url": "https://lex.uz/ru/docs/4674893"
+  },
+  {
+    "key": "business_contract_law",
+    "title": "О договорно-правовой базе деятельности хозяйствующих субъектов",
+    "doc_type": "law",
+    "language": "ru",
+    "url": "https://lex.uz/ru/docs/10872"
+  }
+]

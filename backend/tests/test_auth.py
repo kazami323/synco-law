@@ -18,7 +18,7 @@ async def test_register_and_login_flow(client):
         json={
             "email": "danil@test.uz",
             "username": "danil",
-            "password": "secret123",
+            "password": "Secret1234",
             "full_name": "Данил Фирсов",
         },
     )
@@ -29,7 +29,7 @@ async def test_register_and_login_flow(client):
     assert body["organization_id"] is None
 
     resp = await client.post(
-        "/api/auth/login", json={"email": "danil@test.uz", "password": "secret123"}
+        "/api/auth/login", json={"email": "danil@test.uz", "password": "Secret1234"}
     )
     assert resp.status_code == 200
     token = resp.json()["access_token"]
@@ -42,7 +42,7 @@ async def test_register_and_login_flow(client):
 
 
 async def test_register_duplicate_email(client):
-    payload = {"email": "dup@test.uz", "username": "dup1", "password": "secret123"}
+    payload = {"email": "dup@test.uz", "username": "dup1", "password": "Secret1234"}
     assert (await client.post("/api/auth/register", json=payload)).status_code == 201
     payload["username"] = "dup2"
     resp = await client.post("/api/auth/register", json=payload)
@@ -50,7 +50,7 @@ async def test_register_duplicate_email(client):
 
 
 async def test_login_wrong_password(client):
-    await register_and_login(client, email="wp@test.uz", username="wp")
+    await register_and_login(client, email="wp@test.uz", username="wrong-pass-user")
     resp = await client.post(
         "/api/auth/login", json={"email": "wp@test.uz", "password": "wrong-password"}
     )

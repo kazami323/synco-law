@@ -1,24 +1,30 @@
 """AI-эндпоинты (Weeks 7-8): анализ контракта, чат с агентами, генерация."""
 
+import asyncio
+import time
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.contracts import get_visible_contract
 from app.core.config import settings
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_upload_user
 from app.core.permissions import require_permission
-from app.db.base import get_db
-from app.db.models import AgentResult, Organization, User
+from app.db.base import async_session_factory, get_db
+from app.db.models import AgentChatSession, AgentResult, Organization, User
 from app.agents.chat import AGENT_PROMPTS, agent_chat
 from app.agents.orchestrator import ContractAnalysisOrchestrator
+from app.agents.response_standard import legal_basis_payload
 from app.services import search as search_service
+from app.services.ai_usage import enforce_ai_access, record_ai_usage
 from app.utils.audit import log_action
-from app.utils.document_parser import parse_file
-from app.utils.llm import require_api_key
+from app.utils.document_parser import parse_file, pdf_needs_ocr
+from app.utils.llm import collect_usage, extract_pdf_text, require_api_key
+from app.utils.upload_security import UploadSecurityError, secure_upload
 
 router = APIRouter(prefix="/api", tags=["ai-agents"])
 
@@ -35,6 +41,7 @@ async def trigger_analysis(
     """Полный AI-анализ: структура + закон + риски (+ комплаенс, если
     у организации заданы внутренние политики)."""
     require_api_key()
+    await enforce_ai_access(db, user)
     contract = await get_visible_contract(contract_id, user, db)
     if not contract.content:
         raise HTTPException(
@@ -43,11 +50,14 @@ async def trigger_analysis(
 
     org = await db.get(Organization, user.organization_id)
     orchestrator = ContractAnalysisOrchestrator(settings.LEX_UZ_API_KEY)
-    report = await orchestrator.run_analysis(
-        str(contract.id),
-        contract.content,
-        compliance_policies=org.compliance_policies if org else None,
-    )
+    with collect_usage() as usage:
+        report = await orchestrator.run_analysis(
+            str(contract.id),
+            contract.content,
+            compliance_policies=org.compliance_policies if org else None,
+            db=db,
+        )
+    record_ai_usage(db, user, usage, endpoint="contract_analysis", agent="orchestrator")
 
     for agent_name, result in report["analysis"].items():
         db.add(
@@ -81,7 +91,7 @@ async def trigger_analysis(
 @router.get("/contracts/{contract_id}/analysis")
 async def get_analysis(
     contract_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_upload_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Последние сохранённые результаты анализа по каждому агенту."""
@@ -109,16 +119,20 @@ async def get_analysis(
 # ---------- Чат с агентами ----------
 
 class ChatMessage(BaseModel):
-    role: str
-    content: str
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(min_length=1, max_length=20_000)
+    agent: str | None = Field(default=None, max_length=64)
+    feedback: Literal["up", "down"] | None = None
+    sources: list[dict] = Field(default_factory=list, max_length=10)
 
 
 class ChatRequest(BaseModel):
     agent: str = "analyzer"
-    messages: list[ChatMessage]
+    messages: list[ChatMessage] = Field(min_length=1, max_length=20)
     contract_id: uuid.UUID | None = None
-    document_text: str | None = None
-    document_name: str | None = None
+    document_text: str | None = Field(default=None, max_length=100_000)
+    document_name: str | None = Field(default=None, max_length=512)
+    session_id: uuid.UUID | None = None
 
 
 @router.post("/agents/chat")
@@ -128,6 +142,7 @@ async def chat_with_agent(
     db: AsyncSession = Depends(get_db),
 ):
     require_api_key()
+    await enforce_ai_access(db, user)
     if data.agent not in AGENT_PROMPTS:
         raise HTTPException(
             status_code=400,
@@ -136,36 +151,212 @@ async def chat_with_agent(
     if not data.messages:
         raise HTTPException(status_code=400, detail="Пустая история сообщений")
 
+    existing_session: AgentChatSession | None = None
+    if data.session_id is not None:
+        existing_session = (
+            await db.execute(
+                select(AgentChatSession).where(
+                    AgentChatSession.id == data.session_id,
+                    AgentChatSession.user_id == user.id,
+                    AgentChatSession.organization_id == user.organization_id,
+                )
+            )
+        ).scalar_one_or_none()
+
     context_text = data.document_text
     context_label = data.document_name
     if data.contract_id is not None:
         contract = await get_visible_contract(data.contract_id, user, db)
         context_text = contract.content or ""
         context_label = contract.title
+    elif context_text is None and existing_session is not None:
+        if existing_session.contract_id is not None:
+            contract = await get_visible_contract(existing_session.contract_id, user, db)
+            context_text = contract.content or ""
+            context_label = contract.title
+        elif existing_session.document_text:
+            context_text = existing_session.document_text
+            context_label = existing_session.document_name
 
-    reply = await agent_chat(
-        data.agent,
-        [m.model_dump() for m in data.messages],
-        context_document=context_text,
-        context_label=context_label,
+    with collect_usage() as usage:
+        chat_result = await agent_chat(
+            data.agent,
+            [m.model_dump() for m in data.messages],
+            context_document=context_text,
+            context_label=context_label,
+            db=db,
+        )
+    if isinstance(chat_result, str):
+        reply = chat_result
+        verified_sources: list[dict] = []
+    else:
+        reply = chat_result.reply
+        verified_sources = legal_basis_payload(chat_result.legal_sources)
+    record_ai_usage(db, user, usage, endpoint="agent_chat", agent=data.agent)
+    if data.session_id is not None:
+        session = (
+            await db.execute(
+                select(AgentChatSession)
+                .where(
+                    AgentChatSession.id == data.session_id,
+                    AgentChatSession.user_id == user.id,
+                    AgentChatSession.organization_id == user.organization_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if session is None:
+            if user.organization_id is None:
+                raise HTTPException(status_code=400, detail="Create an organization first")
+            session = AgentChatSession(
+                id=data.session_id,
+                organization_id=user.organization_id,
+                user_id=user.id,
+                agent=data.agent,
+                title="Новый чат",
+                messages=[],
+            )
+            db.add(session)
+        stored_messages = [m.model_dump() for m in data.messages]
+        stored_messages.append(
+            {
+                "role": "assistant",
+                "content": reply,
+                "agent": data.agent,
+                "sources": verified_sources,
+            }
+        )
+        session.agent = data.agent
+        session.messages = stored_messages[-100:]
+        session.title = _chat_title(stored_messages)
+        if data.contract_id is not None:
+            session.contract_id = data.contract_id
+            session.document_name = None
+            session.document_text = None
+        elif data.document_text is not None:
+            session.contract_id = None
+            session.document_name = data.document_name
+            session.document_text = data.document_text
+    await db.commit()
+    return {"reply": reply, "sources": verified_sources}
+
+
+def _chat_title(messages: list[dict]) -> str:
+    first = next(
+        (str(message.get("content", "")) for message in messages if message.get("role") == "user"),
+        "Новый чат",
     )
-    return {"reply": reply}
+    clean = " ".join(first.split())
+    return f"{clean[:48]}..." if len(clean) > 48 else clean or "Новый чат"
+
+
+# Фоновые задачи OCR-распознавания. Синхронный ответ не подходит: OCR скана
+# занимает минуты, а cloudflare-туннель обрывает соединение на ~100-й секунде
+# («Failed to fetch» у пользователя). Поэтому: мгновенный ответ с job_id +
+# лёгкий поллинг статуса. Хранилище в памяти — процесс uvicorn один.
+_PARSE_JOBS: dict[str, dict] = {}
+_PARSE_JOB_TTL_SECONDS = 30 * 60
+
+
+def _cleanup_parse_jobs() -> None:
+    now = time.monotonic()
+    for job_id in [
+        job_id
+        for job_id, job in _PARSE_JOBS.items()
+        if now - job["created"] > _PARSE_JOB_TTL_SECONDS
+    ]:
+        _PARSE_JOBS.pop(job_id, None)
+
+
+async def _run_ocr_job(job_id: str, user_id: uuid.UUID, data: bytes, filename: str) -> None:
+    job = _PARSE_JOBS.get(job_id)
+    try:
+        with collect_usage() as usage:
+            text = await extract_pdf_text(data, filename)
+        # Запрос уже завершён — расход токенов пишем отдельной сессией
+        async with async_session_factory() as db:
+            job_user = await db.get(User, user_id)
+            if job_user is not None:
+                record_ai_usage(
+                    db, job_user, usage, endpoint="pdf_ocr", agent="document_parser"
+                )
+                await db.commit()
+        if job is not None:
+            job.update(status="done", text=text, extraction_method="ocr")
+    except Exception as exc:
+        if job is not None:
+            job.update(
+                status="error",
+                detail=str(exc) or "Не удалось распознать сканированный PDF",
+            )
 
 
 @router.post("/agents/parse-file")
 async def parse_document_for_chat(
     file: UploadFile = File(...),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_upload_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Извлечь текст из файла для вложения в чат (без сохранения в систему)."""
-    data = await file.read()
-    if len(data) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Файл больше 20 МБ")
+    """Извлечь текст из файла для вложения в чат (без сохранения в систему).
+
+    Текстовые файлы отдаются сразу (status=done). Сканированные PDF уходят
+    в фоновое OCR: возвращается status=processing + job_id для поллинга.
+    """
     try:
-        text = parse_file(file.filename or "document", data)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"filename": file.filename, "text": text}
+        filename, data = await secure_upload(file)
+        text = parse_file(filename, data)
+    except UploadSecurityError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not pdf_needs_ocr(filename, text):
+        return {
+            "status": "done",
+            "filename": filename,
+            "text": text,
+            "extraction_method": "text",
+        }
+
+    # Скан без текстового слоя: доступность ИИ проверяем сразу, чтобы отдать
+    # понятную ошибку (503/429) синхронно, а не внутри фоновой задачи
+    require_api_key()
+    await enforce_ai_access(db, user)
+    _cleanup_parse_jobs()
+    job_id = uuid.uuid4().hex
+    _PARSE_JOBS[job_id] = {
+        "created": time.monotonic(),
+        "user_id": str(user.id),
+        "filename": filename,
+        "status": "processing",
+    }
+    asyncio.create_task(_run_ocr_job(job_id, user.id, data, filename))
+    return {"status": "processing", "job_id": job_id, "filename": filename}
+
+
+@router.get("/agents/parse-file/jobs/{job_id}")
+async def parse_document_job_status(
+    job_id: str,
+    user: User = Depends(get_upload_user),
+):
+    """Статус фонового распознавания. Отвечает мгновенно — таймауты не страшны."""
+    _cleanup_parse_jobs()
+    job = _PARSE_JOBS.get(job_id)
+    if job is None or job.get("user_id") != str(user.id):
+        raise HTTPException(
+            status_code=404,
+            detail="Задача распознавания не найдена (возможно, сервер перезапускался). Приложите файл ещё раз.",
+        )
+    if job["status"] == "done":
+        return {
+            "status": "done",
+            "filename": job["filename"],
+            "text": job["text"],
+            "extraction_method": job["extraction_method"],
+        }
+    if job["status"] == "error":
+        return {"status": "error", "detail": job["detail"]}
+    return {"status": "processing"}
 
 
 # ---------- Перевод контракта ----------
@@ -183,15 +374,17 @@ async def translate_contract(
 ):
     """Юридический перевод контракта (Translation Agent, Phase 2)."""
     require_api_key()
+    await enforce_ai_access(db, user)
     contract = await get_visible_contract(contract_id, user, db)
     if not contract.content:
         raise HTTPException(status_code=400, detail="У контракта нет текста")
 
     orchestrator = ContractAnalysisOrchestrator()
     try:
-        translated = await orchestrator.translation_agent.translate(
-            contract.content, data.target_lang
-        )
+        with collect_usage() as usage:
+            translated = await orchestrator.translation_agent.translate(
+                contract.content, data.target_lang
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -203,6 +396,7 @@ async def translate_contract(
             result_data={"target_lang": data.target_lang, "content": translated},
         )
     )
+    record_ai_usage(db, user, usage, endpoint="contract_translation", agent="translator")
     await db.commit()
     return {"target_lang": data.target_lang, "content": translated}
 
@@ -218,11 +412,16 @@ class DraftRequest(BaseModel):
 async def generate_draft(
     data: DraftRequest,
     user: User = Depends(require_permission("create")),
+    db: AsyncSession = Depends(get_db),
 ):
     """Сгенерировать текст договора по требованиям (Draft Agent)."""
     require_api_key()
+    await enforce_ai_access(db, user)
     orchestrator = ContractAnalysisOrchestrator()
-    content = await orchestrator.draft_agent.create_contract(
-        data.contract_type, data.requirements
-    )
+    with collect_usage() as usage:
+        content = await orchestrator.draft_agent.create_contract(
+            data.contract_type, data.requirements
+        )
+    record_ai_usage(db, user, usage, endpoint="draft_generation", agent="draft")
+    await db.commit()
     return {"content": content}

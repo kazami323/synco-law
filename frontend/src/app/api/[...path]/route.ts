@@ -7,11 +7,15 @@
  */
 import type { NextRequest } from "next/server";
 
+// Ответы агентов идут до 1-2 минут — дефолтного лимита функции может не
+// хватить, обрыв выглядит у пользователя как «Failed to fetch»
+export const maxDuration = 300;
+
 const BACKEND = process.env.BACKEND_URL ?? "http://127.0.0.1:8000";
 
 // Эти заголовки нельзя пересылать как есть: их выставляет сам fetch,
 // а content-encoding уже "снят" при декодировании ответа
-const SKIP_REQUEST = new Set(["host", "connection", "content-length"]);
+const SKIP_REQUEST = new Set(["host", "connection", "content-length", "expect"]);
 const SKIP_RESPONSE = new Set([
   "content-encoding",
   "content-length",
@@ -38,8 +42,16 @@ async function proxy(req: NextRequest) {
 
   const responseHeaders = new Headers();
   upstream.headers.forEach((value, key) => {
-    if (!SKIP_RESPONSE.has(key.toLowerCase())) responseHeaders.set(key, value);
+    if (
+      !SKIP_RESPONSE.has(key.toLowerCase()) &&
+      key.toLowerCase() !== "set-cookie"
+    ) {
+      responseHeaders.set(key, value);
+    }
   });
+  for (const cookie of upstream.headers.getSetCookie()) {
+    responseHeaders.append("set-cookie", cookie);
+  }
 
   return new Response(upstream.body, {
     status: upstream.status,

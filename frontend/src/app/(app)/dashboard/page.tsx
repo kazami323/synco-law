@@ -4,8 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import {
   CalendarClock,
   CheckCircle2,
-  CircleAlert,
-  TriangleAlert,
+  Clock,
+  FileCheck2,
+  ShieldAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,45 +15,29 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import type { ContractList, DashboardMetrics } from "@/lib/types";
-import { Card, Chip, EmptyState } from "@/components/ui";
+import { Card, Chip, EmptyState, Skeleton } from "@/components/ui";
 import { RiskChip, StatusChip, TypeChip } from "@/components/contract-chips";
 
-type NumericMetricKey =
-  | "total_reviewed"
-  | "high_risk"
-  | "medium_risk"
-  | "low_risk"
-  | "pending_approval"
-  | "signed"
-  | "upcoming_deadlines_count";
+type Tint = "primary" | "warning" | "success" | "error";
 
-const KPI: {
-  key: NumericMetricKey;
-  label: string;
-  tone: "neutral" | "error" | "warning" | "success" | "info";
-  icon?: React.ComponentType<{ size?: number; className?: string }>;
-}[] = [
-  { key: "total_reviewed", label: "Проверено", tone: "neutral" },
-  { key: "high_risk", label: "Высокий риск", tone: "error", icon: TriangleAlert },
-  { key: "medium_risk", label: "Средний риск", tone: "warning", icon: CircleAlert },
-  { key: "low_risk", label: "Низкий риск", tone: "success", icon: CheckCircle2 },
-  { key: "pending_approval", label: "На согласовании", tone: "neutral" },
-  { key: "signed", label: "Подписано", tone: "success" },
-  {
-    key: "upcoming_deadlines_count",
-    label: "Сроки 7 дней",
-    tone: "error",
-    icon: CalendarClock,
-  },
-];
-
-const TONE_TEXT = {
-  neutral: "text-on-surface",
-  error: "text-error",
-  warning: "text-warning",
-  success: "text-success",
-  info: "text-primary",
+const RING: Record<Tint, string> = {
+  primary: "bg-primary-fixed text-primary",
+  warning: "bg-warning/10 text-warning",
+  success: "bg-success/10 text-success",
+  error: "bg-error/10 text-error",
 };
+
+const HERO: {
+  key: keyof DashboardMetrics;
+  label: string;
+  tint: Tint;
+  icon: React.ComponentType<{ size?: number }>;
+}[] = [
+  { key: "total_reviewed", label: "Проверено договоров", tint: "primary", icon: FileCheck2 },
+  { key: "pending_approval", label: "На согласовании", tint: "warning", icon: Clock },
+  { key: "signed", label: "Подписано", tint: "success", icon: CheckCircle2 },
+  { key: "upcoming_deadlines_count", label: "Ближайшие сроки", tint: "error", icon: CalendarClock },
+];
 
 const DEADLINE_LABELS: Record<string, string> = {
   payment: "Оплата",
@@ -70,6 +55,14 @@ function deadlineText(daysLeft: number) {
 function formatDateOnly(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day).toLocaleDateString("ru-RU");
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 6) return "Доброй ночи";
+  if (h < 12) return "Доброе утро";
+  if (h < 18) return "Добрый день";
+  return "Добрый вечер";
 }
 
 export default function DashboardPage() {
@@ -92,86 +85,106 @@ export default function DashboardPage() {
     queryFn: () => api<ContractList>("/api/contracts/?limit=5"),
   });
 
-  const upcoming = metrics.data?.upcoming_deadlines ?? [];
+  const m = metrics.data;
+  const upcoming = m?.upcoming_deadlines ?? [];
+  const firstName = user?.full_name?.split(" ")[0] ?? "";
+
+  const riskTotal = (m?.high_risk ?? 0) + (m?.medium_risk ?? 0) + (m?.low_risk ?? 0);
+  const riskSegments = [
+    { label: "Высокий", n: m?.high_risk ?? 0, bar: "bg-error", dot: "bg-error" },
+    { label: "Средний", n: m?.medium_risk ?? 0, bar: "bg-warning", dot: "bg-warning" },
+    { label: "Низкий", n: m?.low_risk ?? 0, bar: "bg-success", dot: "bg-success" },
+  ];
 
   return (
     <div className="max-w-6xl">
-      <h1 className="text-2xl font-semibold">Обзор панелей</h1>
-      <p className="text-on-surface-variant text-sm mt-1">
+      <h1 className="text-2xl font-semibold">
+        {greeting()}
+        {firstName && `, ${firstName}`}
+      </h1>
+      <p className="mt-1 text-sm text-on-surface-variant">
         Сводка по контрактам, рискам, подписям и ближайшим срокам.
       </p>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-4 mt-6">
-        {KPI.map(({ key, label, tone, icon: Icon }) => (
-          <Card key={key} className="p-4">
-            <div
-              className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase ${TONE_TEXT[tone]}`}
-            >
-              {Icon && <Icon size={14} />}
-              {label}
+      {/* ── Ключевые показатели ── */}
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {HERO.map(({ key, label, tint, icon: Icon }) => (
+          <Card key={key} className="p-5 transition-shadow hover:shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${RING[tint]}`}>
+                <Icon size={20} />
+              </span>
             </div>
-            <div className={`text-3xl font-semibold mt-2 ${TONE_TEXT[tone]}`}>
-              {metrics.isLoading ? "…" : (metrics.data?.[key] ?? 0)}
+            <div className="mt-3 text-3xl font-semibold tabular-nums">
+              {metrics.isLoading ? (
+                <Skeleton className="h-8 w-12" />
+              ) : (
+                ((m?.[key] as number) ?? 0)
+              )}
             </div>
+            <div className="mt-0.5 text-sm text-on-surface-variant">{label}</div>
           </Card>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mt-6">
-        <Card className="xl:col-span-2 overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 bg-surface-container-low border-b border-outline-variant">
+      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
+        {/* ── Недавние контракты ── */}
+        <Card className="overflow-hidden xl:col-span-2">
+          <div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low px-6 py-4">
             <h2 className="font-semibold">Недавние контракты</h2>
             <Link href="/contracts" className="text-sm text-primary hover:underline">
               Смотреть все
             </Link>
           </div>
           {contracts.isLoading ? (
-            <div className="p-6 space-y-3">
+            <div className="space-y-3 p-6">
               {[0, 1, 2].map((item) => (
-                <div
-                  key={item}
-                  className="h-14 rounded-lg bg-surface-container animate-pulse"
-                />
+                <Skeleton key={item} className="h-14" />
               ))}
             </div>
           ) : contracts.data && contracts.data.items.length > 0 ? (
-            <div className="overflow-x-auto"><table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs uppercase text-on-surface-variant">
-                  <th className="px-6 py-3">Название</th>
-                  <th className="px-6 py-3">Тип</th>
-                  <th className="px-6 py-3">Риск</th>
-                  <th className="px-6 py-3">Статус</th>
-                  <th className="px-6 py-3">Дата</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contracts.data.items.map((c) => (
-                  <tr key={c.id} className="border-t border-outline-variant">
-                    <td className="px-6 py-3">
-                      <Link
-                        href={`/contracts/${c.id}`}
-                        className="text-primary font-medium hover:underline"
-                      >
-                        {c.title}
-                      </Link>
-                    </td>
-                    <td className="px-6 py-3">
-                      <TypeChip type={c.contract_type} />
-                    </td>
-                    <td className="px-6 py-3">
-                      <RiskChip score={c.risk_score} />
-                    </td>
-                    <td className="px-6 py-3">
-                      <StatusChip status={c.status} />
-                    </td>
-                    <td className="px-6 py-3">
-                      {new Date(c.created_at).toLocaleDateString("ru-RU")}
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase text-on-surface-variant">
+                    <th className="px-4 py-3 font-medium">Название</th>
+                    <th className="px-4 py-3 font-medium">Тип</th>
+                    <th className="px-4 py-3 font-medium">Риск</th>
+                    <th className="px-4 py-3 font-medium">Статус</th>
+                    <th className="px-4 py-3 font-medium">Дата</th>
                   </tr>
-                ))}
-              </tbody>
-            </table></div>
+                </thead>
+                <tbody>
+                  {contracts.data.items.map((c) => (
+                    <tr
+                      key={c.id}
+                      className="border-t border-outline-variant transition-colors hover:bg-surface-container-low"
+                    >
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/contracts/${c.id}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {c.title}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3">
+                        <TypeChip type={c.contract_type} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <RiskChip score={c.risk_score} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusChip status={c.status} />
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-on-surface-variant">
+                        {new Date(c.created_at).toLocaleDateString("ru-RU")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <EmptyState
               title="Контрактов пока нет"
@@ -180,56 +193,97 @@ export default function DashboardPage() {
           )}
         </Card>
 
-        <Card className="bg-warning-container/30 border-warning/30 overflow-hidden">
-          <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-warning/20">
+        {/* ── Правая колонка: риски + сроки ── */}
+        <div className="space-y-6">
+          <Card className="p-5">
             <div className="flex items-center gap-2">
-              <CalendarClock size={18} className="text-warning" />
-              <h2 className="font-semibold">Предстоящие сроки</h2>
+              <ShieldAlert size={18} className="text-primary" />
+              <h2 className="font-semibold">Распределение рисков</h2>
             </div>
-            <div className="text-2xl font-semibold text-error">
-              {metrics.isLoading ? "…" : (metrics.data?.upcoming_deadlines_count ?? 0)}
-            </div>
-          </div>
-          {metrics.isLoading ? (
-            <div className="p-6 space-y-3">
-              {[0, 1, 2].map((item) => (
-                <div
-                  key={item}
-                  className="h-14 rounded-lg bg-surface-container animate-pulse"
-                />
-              ))}
-            </div>
-          ) : upcoming.length > 0 ? (
-            <div className="divide-y divide-warning/20">
-              {upcoming.map((item) => (
-                <Link
-                  key={item.id}
-                  href={`/contracts/${item.contract_id}`}
-                  className="block px-6 py-4 hover:bg-warning-container/40"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm truncate">
-                        {item.contract_title}
-                      </div>
-                      <div className="text-xs text-on-surface-variant mt-1">
-                        {DEADLINE_LABELS[item.type] ?? item.type} ·{" "}
-                        {formatDateOnly(item.deadline_date)}
-                      </div>
+
+            {metrics.isLoading ? (
+              <Skeleton className="mt-4 h-3 w-full" />
+            ) : riskTotal === 0 ? (
+              <p className="mt-4 text-sm text-on-surface-variant">
+                Пока нет оценённых договоров.
+              </p>
+            ) : (
+              <>
+                <div className="mt-4 flex h-2.5 gap-0.5 overflow-hidden rounded-full">
+                  {riskSegments
+                    .filter((s) => s.n > 0)
+                    .map((s) => (
+                      <span
+                        key={s.label}
+                        className={s.bar}
+                        style={{ width: `${(s.n / riskTotal) * 100}%` }}
+                        title={`${s.label}: ${s.n}`}
+                      />
+                    ))}
+                </div>
+                <div className="mt-4 space-y-2">
+                  {riskSegments.map((s) => (
+                    <div key={s.label} className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-2 text-on-surface-variant">
+                        <span className={`h-2 w-2 rounded-full ${s.dot}`} />
+                        {s.label} риск
+                      </span>
+                      <span className="font-semibold tabular-nums">{s.n}</span>
                     </div>
-                    <Chip tone={item.days_left < 7 ? "error" : "neutral"}>
-                      {deadlineText(item.days_left)}
-                    </Chip>
-                  </div>
-                </Link>
-              ))}
+                  ))}
+                </div>
+              </>
+            )}
+          </Card>
+
+          <Card className="overflow-hidden">
+            <div className="flex items-center justify-between border-b border-outline-variant px-5 py-4">
+              <div className="flex items-center gap-2">
+                <CalendarClock size={18} className="text-warning" />
+                <h2 className="font-semibold">Предстоящие сроки</h2>
+              </div>
+              <span className="text-lg font-semibold tabular-nums text-error">
+                {metrics.isLoading ? "…" : (m?.upcoming_deadlines_count ?? 0)}
+              </span>
             </div>
-          ) : (
-            <div className="px-6 py-8 text-sm text-on-surface-variant">
-              Нет приближающихся сроков.
-            </div>
-          )}
-        </Card>
+            {metrics.isLoading ? (
+              <div className="space-y-3 p-5">
+                {[0, 1].map((item) => (
+                  <Skeleton key={item} className="h-12" />
+                ))}
+              </div>
+            ) : upcoming.length > 0 ? (
+              <div className="divide-y divide-outline-variant">
+                {upcoming.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/contracts/${item.contract_id}`}
+                    className="block px-5 py-3.5 transition-colors hover:bg-surface-container-low"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">
+                          {item.contract_title}
+                        </div>
+                        <div className="mt-1 text-xs text-on-surface-variant">
+                          {DEADLINE_LABELS[item.type] ?? item.type} ·{" "}
+                          {formatDateOnly(item.deadline_date)}
+                        </div>
+                      </div>
+                      <Chip tone={item.days_left < 7 ? "error" : "neutral"}>
+                        {deadlineText(item.days_left)}
+                      </Chip>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="px-5 py-8 text-center text-sm text-on-surface-variant">
+                Нет приближающихся сроков.
+              </p>
+            )}
+          </Card>
+        </div>
       </div>
     </div>
   );

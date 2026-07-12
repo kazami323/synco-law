@@ -1,4 +1,5 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const UPLOAD_API_URL = process.env.NEXT_PUBLIC_UPLOAD_API_URL || API_URL;
 
 export class ApiError extends Error {
   status: number;
@@ -9,32 +10,59 @@ export class ApiError extends Error {
   }
 }
 
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("token");
-}
-
-export function setToken(token: string | null) {
-  if (token === null) localStorage.removeItem("token");
-  else localStorage.setItem("token", token);
-}
-
 interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
 }
 
-export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
+function responseDetail(data: unknown, fallback: string): string {
+  if (!data || typeof data !== "object" || !("detail" in data)) return fallback;
+  const detail = (data as { detail: unknown }).detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) =>
+        item && typeof item === "object" && "msg" in item
+          ? String((item as { msg: unknown }).msg)
+          : "",
+      )
+      .filter(Boolean);
+    if (messages.length) return messages.join("; ");
+  }
+  return fallback;
+}
+
+let refreshPromise: Promise<boolean> | null = null;
+
+async function refreshSession(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_URL}/api/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    })
+      .then((response) => response.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+export async function api<T>(
+  path: string,
+  options: RequestOptions = {},
+  retryAuth = true
+): Promise<T> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
-  const token = getToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
       method: options.method ?? "GET",
       headers,
+      credentials: "include",
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     });
   } catch {
@@ -44,29 +72,35 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     );
   }
 
+  if (
+    res.status === 401 &&
+    retryAuth &&
+    !path.startsWith("/api/auth/login") &&
+    !path.startsWith("/api/auth/refresh")
+  ) {
+    if (await refreshSession()) return api<T>(path, options, false);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("auth:expired"));
+    }
+  }
+
   if (!res.ok) {
     let detail = res.statusText;
     try {
       const data = await res.json();
-      if (data.detail) {
-        detail =
-          typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
-      }
+      detail = responseDetail(data, detail);
     } catch {
       // Keep statusText when response body is not JSON.
     }
     throw new ApiError(res.status, detail);
   }
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
 /** Скачивание файла с Bearer-токеном (CSV-экспорт и т.п.). */
 export async function apiDownload(path: string, filename: string): Promise<void> {
-  const headers: Record<string, string> = {};
-  const token = getToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch(`${API_URL}${path}`, { headers });
+  const res = await fetch(`${API_URL}${path}`, { credentials: "include" });
   if (!res.ok) throw new ApiError(res.status, res.statusText);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -77,28 +111,97 @@ export async function apiDownload(path: string, filename: string): Promise<void>
   URL.revokeObjectURL(url);
 }
 
-export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
-  const headers: Record<string, string> = {};
-  const token = getToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+const UPLOAD_NETWORK_ERROR =
+  "Не удалось связаться с сервером обработки документов. Проверьте интернет и повторите — если не поможет, сервер сейчас недоступен.";
 
-  const res = await fetch(`${API_URL}${path}`, {
+const externalUpload = () => Boolean(UPLOAD_API_URL && UPLOAD_API_URL !== API_URL);
+
+async function uploadAuthHeaders(): Promise<Record<string, string>> {
+  if (!externalUpload()) return {};
+  const token = await api<{ upload_token: string }>("/api/auth/upload-token", {
     method: "POST",
-    headers,
-    body: form,
   });
+  return { Authorization: `Bearer ${token.upload_token}` };
+}
+
+/** Запрос к серверу загрузок: внешний хост с Bearer-токеном или same-origin. */
+async function uploadRequest<T>(
+  path: string,
+  init: { method: "GET" | "POST"; body?: FormData },
+  retryAuth = true
+): Promise<T> {
+  const headers = await uploadAuthHeaders();
+  let res: Response;
+  try {
+    res = await fetch(`${UPLOAD_API_URL}${path}`, {
+      method: init.method,
+      headers,
+      credentials: externalUpload() ? "omit" : "include",
+      body: init.body,
+    });
+  } catch {
+    throw new ApiError(0, UPLOAD_NETWORK_ERROR);
+  }
+  // Упавший upload-токен (TTL 5 мин) обновляем и пробуем ещё раз
+  if (res.status === 401 && retryAuth && externalUpload()) {
+    return uploadRequest<T>(path, init, false);
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
       const data = await res.json();
-      if (data.detail) {
-        detail =
-          typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
-      }
+      detail = responseDetail(data, detail);
     } catch {
       // Keep statusText when response body is not JSON.
     }
     throw new ApiError(res.status, detail);
   }
   return res.json();
+}
+
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  return uploadRequest<T>(path, { method: "POST", body: form });
+}
+
+export interface ParsedFile {
+  filename: string;
+  text: string;
+  extraction_method: "text" | "ocr";
+}
+
+type ParseFileResponse =
+  | ({ status: "done" } & ParsedFile)
+  | { status: "processing"; job_id: string; filename: string }
+  | { status: "error"; detail: string };
+
+const PARSE_POLL_INTERVAL_MS = 3_000;
+const PARSE_POLL_DEADLINE_MS = 10 * 60_000;
+
+/**
+ * Разбор документа для чата. Текстовые файлы возвращаются сразу; сканы
+ * распознаются на сервере в фоне — здесь мы поллим статус короткими
+ * запросами, которым не страшны таймауты туннеля и прокси.
+ */
+export async function apiParseFile(form: FormData): Promise<ParsedFile> {
+  const first = await uploadRequest<ParseFileResponse>("/api/agents/parse-file", {
+    method: "POST",
+    body: form,
+  });
+  if (first.status === "done") return first;
+  if (first.status === "error") throw new ApiError(422, first.detail);
+
+  const deadline = Date.now() + PARSE_POLL_DEADLINE_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, PARSE_POLL_INTERVAL_MS));
+    const status = await uploadRequest<ParseFileResponse>(
+      `/api/agents/parse-file/jobs/${first.job_id}`,
+      { method: "GET" }
+    );
+    if (status.status === "done") return status;
+    if (status.status === "error") throw new ApiError(422, status.detail);
+  }
+  throw new ApiError(
+    0,
+    "Распознавание занимает слишком много времени. Попробуйте PDF меньшего размера или свяжитесь с администратором."
+  );
 }

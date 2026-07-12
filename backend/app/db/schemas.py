@@ -20,6 +20,7 @@ class UserOut(BaseModel):
     role: str
     organization_id: uuid.UUID | None = None
     is_active: bool
+    mfa_enabled: bool = False
 
 
 class OrganizationCreate(BaseModel):
@@ -46,6 +47,7 @@ class OrganizationOut(BaseModel):
     phone: str | None = None
     address: str | None = None
     country: str
+    invite_code: str
     storage_limit: int
     compliance_policies: str | None = None
     created_at: datetime

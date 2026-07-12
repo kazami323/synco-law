@@ -17,7 +17,7 @@ import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import type { ContractDetail } from "@/lib/types";
 import { Button, Chip, ErrorNote, Skeleton } from "@/components/ui";
-import { StatusChip, TypeChip } from "@/components/contract-chips";
+import { StatusChip, TypeChip, TypeIcon } from "@/components/contract-chips";
 
 type Tone = "error" | "warning" | "info" | "success" | "neutral";
 
@@ -250,8 +250,9 @@ export default function WorkspacePage() {
           >
             <ArrowLeft size={16} /> К контракту
           </button>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <h1 className="text-xl font-semibold truncate max-w-[60vw]">
+          <div className="flex items-center gap-2.5 mt-1.5 flex-wrap">
+            <TypeIcon type={c.contract_type} size={17} className="h-8 w-8 shrink-0" />
+            <h1 className="text-xl font-semibold truncate max-w-[50vw]">
               {c.title}
             </h1>
             <TypeChip type={c.contract_type} />
@@ -286,7 +287,12 @@ export default function WorkspacePage() {
       <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)_320px] gap-4 items-start">
         <div className="space-y-4 order-2 xl:order-1">
           {leftPanels.map((p) => (
-            <AgentPanel key={p.id} {...p} loading={run.isPending} />
+            <AgentPanel
+              key={p.id}
+              {...p}
+              loading={run.isPending}
+              analyzed={!!hasAnalysis}
+            />
           ))}
         </div>
 
@@ -326,7 +332,12 @@ export default function WorkspacePage() {
 
         <div className="space-y-4 order-3">
           {rightPanels.map((p) => (
-            <AgentPanel key={p.id} {...p} loading={run.isPending} />
+            <AgentPanel
+              key={p.id}
+              {...p}
+              loading={run.isPending}
+              analyzed={!!hasAnalysis}
+            />
           ))}
         </div>
       </div>
@@ -350,6 +361,7 @@ function AgentPanel({
   note,
   chip,
   score,
+  analyzed,
 }: {
   name: string;
   sub: string;
@@ -359,6 +371,7 @@ function AgentPanel({
   note?: string;
   chip?: { label: string; tone: Tone };
   score?: number | null;
+  analyzed?: boolean;
 }) {
   return (
     <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden">
@@ -400,9 +413,13 @@ function AgentPanel({
           </div>
         ) : comments.length > 0 ? (
           comments.map((cm, i) => <CommentCard key={i} c={cm} />)
-        ) : (
+        ) : analyzed ? (
           <div className="flex items-center gap-2 text-sm text-success px-1 py-2">
             <CheckCircle2 size={16} /> Замечаний нет
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-on-surface-variant px-1 py-2">
+            <Sparkles size={15} className="text-outline" /> Ещё не проверялось
           </div>
         )}
       </div>

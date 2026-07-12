@@ -28,6 +28,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (pathname.startsWith("/agents")) {
+    return <main className="h-dvh overflow-hidden">{children}</main>;
+  }
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar mobileOpen={menuOpen} onClose={() => setMenuOpen(false)} />

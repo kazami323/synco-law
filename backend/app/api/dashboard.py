@@ -100,8 +100,7 @@ async def get_dashboard_metrics(
             }
             for deadline, contract in upcoming_rows
         ],
-        "avg_review_time": None,  # появится вместе с workflow (Weeks 11-12)
-        "hours_saved": row.reviewed * 2,  # оценка из ТЗ: ~2 часа на проверку
+        "avg_review_time": None,
     }
 
 

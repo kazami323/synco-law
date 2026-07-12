@@ -7,6 +7,8 @@ Contract Analyzer и Law Agent работают параллельно, зате
 import asyncio
 import time
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.agents.compliance_agent import ComplianceAgent
 from app.agents.contract_analyzer import ContractAnalyzerAgent
 from app.agents.draft_agent import DraftAgent
@@ -29,6 +31,7 @@ class ContractAnalysisOrchestrator:
         contract_id: str,
         contract_content: str,
         compliance_policies: str | None = None,
+        db: AsyncSession | None = None,
     ) -> dict:
         timings: dict[str, int] = {}
 
@@ -41,7 +44,10 @@ class ContractAnalysisOrchestrator:
         # Параллельная волна: структура + закон (+ комплаенс, если политики заданы)
         wave = [
             timed("contract_analyzer", self.analyzer.analyze(contract_content)),
-            timed("law_agent", self.law_agent.check_legislation(contract_content)),
+            timed(
+                "law_agent",
+                self.law_agent.check_legislation(contract_content, db=db),
+            ),
         ]
         if compliance_policies and compliance_policies.strip():
             wave.append(

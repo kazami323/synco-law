@@ -117,12 +117,12 @@ async def test_lawyer_sees_only_own_contracts(client, admin_headers):
 
     resp = await client.post(
         "/api/users/",
-        json={"email": "lw@test.uz", "username": "lw", "password": "secret123"},
+        json={"email": "lw@test.uz", "username": "lawyer-user", "password": "Secret1234"},
         headers=admin_headers,
     )
     assert resp.status_code == 201
     login = await client.post(
-        "/api/auth/login", json={"email": "lw@test.uz", "password": "secret123"}
+        "/api/auth/login", json={"email": "lw@test.uz", "password": "Secret1234"}
     )
     lawyer_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
@@ -155,14 +155,14 @@ async def test_archive_requires_delete_permission(client, admin_headers):
         json={
             "email": "head@test.uz",
             "username": "head",
-            "password": "secret123",
+            "password": "Secret1234",
             "role": "head",
         },
         headers=admin_headers,
     )
     assert resp.status_code == 201
     login = await client.post(
-        "/api/auth/login", json={"email": "head@test.uz", "password": "secret123"}
+        "/api/auth/login", json={"email": "head@test.uz", "password": "Secret1234"}
     )
     head_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 

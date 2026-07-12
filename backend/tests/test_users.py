@@ -9,7 +9,7 @@ async def _create_user(client, admin_headers, email, username, role="lawyer"):
         json={
             "email": email,
             "username": username,
-            "password": "secret123",
+            "password": "Secret1234",
             "role": role,
         },
         headers=admin_headers,
@@ -18,7 +18,7 @@ async def _create_user(client, admin_headers, email, username, role="lawyer"):
     return resp.json()
 
 
-async def _login(client, email, password="secret123"):
+async def _login(client, email, password="Secret1234"):
     resp = await client.post(
         "/api/auth/login", json={"email": email, "password": password}
     )
@@ -51,7 +51,7 @@ async def test_lawyer_cannot_manage_users(client, admin_headers):
     # и нет manage_users -> создание недоступно
     resp = await client.post(
         "/api/users/",
-        json={"email": "x@test.uz", "username": "x", "password": "secret123"},
+        json={"email": "x@test.uz", "username": "invalid", "password": "Secret1234"},
         headers=lawyer_headers,
     )
     assert resp.status_code == 403

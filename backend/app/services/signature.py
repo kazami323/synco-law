@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import json
 import logging
 import uuid
@@ -26,7 +27,9 @@ def contract_hash(contract: Contract) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-async def verify_pkcs7_via_dsv(pkcs7: str) -> bool | None:
+async def verify_pkcs7_via_dsv(
+    pkcs7: str, expected_contract_hash: str | None = None
+) -> bool | None:
     """Серверная проверка подписи через E-IMZO DSV.
 
     None — DSV не настроен (EIMZO_DSV_URL пуст), подпись сохраняется как
@@ -38,10 +41,25 @@ async def verify_pkcs7_via_dsv(pkcs7: str) -> bool | None:
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             response = await client.post(
-                settings.EIMZO_DSV_URL, json={"pkcs7": pkcs7}
+                settings.EIMZO_DSV_URL,
+                json={"pkcs7": pkcs7, "expected_hash": expected_contract_hash},
             )
             response.raise_for_status()
-            return bool(response.json().get("success"))
+            payload = response.json()
+            if not bool(payload.get("success")):
+                return False
+            if expected_contract_hash and settings.EIMZO_REQUIRE_CONTENT_BINDING:
+                signed_hash = (
+                    payload.get("signed_data_hash")
+                    or payload.get("document_hash")
+                    or payload.get("verified_hash")
+                )
+                if not signed_hash or not hmac.compare_digest(
+                    str(signed_hash).lower(), expected_contract_hash.lower()
+                ):
+                    logger.error("DSV did not prove signature binding to contract hash")
+                    return False
+            return True
     except Exception:
         logger.exception("DSV verification failed")
         return False

@@ -13,6 +13,13 @@ htmlcov/
 .env.local
 .env.production
 
+# Local generated data
+backend/backups/
+backend/.cache/
+logs/
+frontend/logs/
+tools/cloudflared.exe
+
 # IDE
 .vscode/
 .idea/
@@ -20,6 +27,8 @@ htmlcov/
 # Node (frontend, Phase 1 Weeks 9-10)
 node_modules/
 .next/
+frontend/test-results/
+frontend/playwright-report/
 
 # OS
 Thumbs.db

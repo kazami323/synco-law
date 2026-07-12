@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.contracts import get_visible_contract
+from app.core.config import settings
 from app.core.dependencies import get_current_user
 from app.core.permissions import ROLE_PERMISSIONS
 from app.db.base import get_db
@@ -206,7 +207,7 @@ async def transition(
             status_code=404, detail=f"Неизвестное действие. Доступны: {sorted(ACTIONS)}"
         )
     spec = ACTIONS[action]
-    contract = await get_visible_contract(contract_id, user, db)
+    contract = await get_visible_contract(contract_id, user, db, for_update=True)
 
     if not _user_can(user, action):
         raise HTTPException(status_code=403, detail="Недостаточно прав для этого шага")
@@ -219,6 +220,11 @@ async def transition(
     if action == "reject" and not (comment and comment.strip()):
         raise HTTPException(
             status_code=400, detail="При отклонении обязателен комментарий"
+        )
+    if action == "sign" and not settings.ALLOW_STUB_SIGNATURES:
+        raise HTTPException(
+            status_code=400,
+            detail="Use E-IMZO sign-request/sign-confirm endpoints",
         )
 
     now = datetime.now(timezone.utc)

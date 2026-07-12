@@ -72,11 +72,11 @@ export default function ProjectsPage() {
           {projects.data.map((project) => (
             <Card
               key={project.id}
-              className="p-5 cursor-pointer hover:border-primary transition-colors"
+              className="group p-5 cursor-pointer transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-sm"
               onClick={() => router.push(`/projects/${project.id}`)}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="w-10 h-10 rounded-lg bg-primary-fixed text-primary flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-lg bg-primary-fixed text-primary flex items-center justify-center shrink-0 transition-colors group-hover:bg-primary group-hover:text-on-primary">
                   <FolderKanban size={20} />
                 </div>
                 <Chip tone={project.status === "active" ? "success" : "neutral"}>

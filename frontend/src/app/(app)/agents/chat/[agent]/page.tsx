@@ -1,256 +1,809 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ChevronDown, Paperclip, Send, X } from "lucide-react";
-import Link from "next/link";
+import {
+  ArrowLeft,
+  Download,
+  Menu,
+  MessageSquarePlus,
+  Trash2,
+} from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { api, apiUpload } from "@/lib/api";
-import { AGENTS, getAgent } from "@/lib/agents";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChatComposer } from "@/components/ai-chat/chat-composer";
+import { ChatSidebar } from "@/components/ai-chat/chat-sidebar";
+import {
+  type ChatMessage,
+  MessageList,
+} from "@/components/ai-chat/message-list";
+import { getAgent } from "@/lib/agents";
+import { api, ApiError, apiParseFile } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import type { ContractList } from "@/lib/types";
-import { Card, ErrorNote } from "@/components/ui";
 
-interface Msg {
-  role: "user" | "assistant";
-  content: string;
-  agent?: string; // кто ответил
+interface ChatSession {
+  id: string;
+  agent: string;
+  title: string;
+  updatedAt: string;
+  messages: ChatMessage[];
+  contractId?: string;
+  documentName?: string | null;
+}
+
+interface StoredChatSession {
+  id: string;
+  agent: string;
+  title: string;
+  updated_at: string;
+  messages: ChatMessage[];
+  contract_id?: string | null;
+  document_name?: string | null;
+}
+
+interface AttachedDocument {
+  name: string;
+  text: string;
+  size: number;
+  type: string;
+  extractionMethod: "text" | "ocr";
+  textChars: number;
+}
+
+interface SendPayload {
+  sessionId: string;
+  agentKey: string;
+  history: ChatMessage[];
+  contractId: string;
+  docs: AttachedDocument[];
+}
+
+const MAX_SESSIONS = 60;
+const MAX_ATTACHED_DOCUMENTS = 3;
+const MAX_COMBINED_DOCUMENT_CHARS = 90_000;
+
+function documentNames(documents: AttachedDocument[]): string | null {
+  if (documents.length === 0) return null;
+  return documents.map((document) => document.name).join(", ").slice(0, 512);
+}
+
+function combinedDocumentText(documents: AttachedDocument[]): string | null {
+  if (documents.length === 0) return null;
+  const perDocument = Math.floor(MAX_COMBINED_DOCUMENT_CHARS / documents.length);
+  return documents
+    .map(
+      (document, index) =>
+        `=== Документ ${index + 1}: ${document.name} ===\n${document.text.slice(0, perDocument)}`
+    )
+    .join("\n\n");
+}
+
+function createSession(agentKey: string): ChatSession {
+  return {
+    id:
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    agent: agentKey,
+    title: "Новый чат",
+    updatedAt: new Date().toISOString(),
+    messages: [],
+    contractId: "",
+    documentName: null,
+  };
+}
+
+function sessionTitle(messages: ChatMessage[]): string {
+  const source =
+    messages.find((message) => message.role === "user")?.content ??
+    messages[0]?.content;
+  if (!source) return "Новый чат";
+  const clean = source.replace(/\s+/g, " ").trim();
+  return clean.length > 48 ? `${clean.slice(0, 48)}...` : clean;
+}
+
+function readSessions(key: string): ChatSession[] {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is ChatSession => {
+        if (!item || typeof item !== "object") return false;
+        const candidate = item as Partial<ChatSession>;
+        return (
+          typeof candidate.id === "string" &&
+          typeof candidate.agent === "string" &&
+          Array.isArray(candidate.messages)
+        );
+      })
+      .slice(0, MAX_SESSIONS);
+  } catch {
+    return [];
+  }
+}
+
+function fromStoredSession(session: StoredChatSession): ChatSession {
+  return {
+    id: session.id,
+    agent: session.agent,
+    title: session.title,
+    updatedAt: session.updated_at,
+    messages: session.messages,
+    contractId: session.contract_id ?? "",
+    documentName: session.document_name ?? null,
+  };
+}
+
+function storedPayload(session: ChatSession) {
+  return {
+    id: session.id,
+    agent: session.agent,
+    title: session.title,
+    messages: session.messages,
+    contract_id: session.contractId || null,
+    document_name: session.documentName ?? null,
+  };
+}
+
+async function createRemoteSession(session: ChatSession): Promise<void> {
+  await api("/api/agents/sessions/", {
+    method: "POST",
+    body: storedPayload(session),
+  });
+}
+
+async function updateRemoteSession(session: ChatSession): Promise<void> {
+  try {
+    await api(`/api/agents/sessions/${session.id}`, {
+      method: "PATCH",
+      body: storedPayload(session),
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      await createRemoteSession(session);
+      return;
+    }
+    throw error;
+  }
 }
 
 export default function AgentChatPage() {
   const params = useParams<{ agent: string }>();
   const router = useRouter();
-  const [agent, setAgent] = useState(getAgent(params.agent).key);
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const { user } = useAuth();
+  const [initialAgentKey] = useState(() => getAgent(params.agent).key);
+  const [agent, setAgent] = useState(initialAgentKey);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [doc, setDoc] = useState<{ name: string; text: string } | null>(null);
+  const [docs, setDocs] = useState<AttachedDocument[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [contractId, setContractId] = useState("");
   const [error, setError] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
 
   const active = getAgent(agent);
-  const Icon = active.icon;
+  const ActiveIcon = active.icon;
+  const storageKey = `synco:agent-chat-history:${user?.id ?? "guest"}`;
 
   const contracts = useQuery({
     queryKey: ["contracts", "for-chat"],
     queryFn: () => api<ContractList>("/api/contracts/?limit=50"),
   });
 
-  // Смена агента — как смена модели: история остаётся, отвечает новый агент
-  function switchAgent(key: string) {
-    setAgent(key);
-    router.replace(`/agents/chat/${key}`, { scroll: false });
-  }
+  const persistSessions = useCallback(
+    (next: ChatSession[]) => {
+      try {
+        window.localStorage.setItem(
+          storageKey,
+          JSON.stringify(next.slice(0, MAX_SESSIONS))
+        );
+      } catch (persistError) {
+        console.warn("Не удалось сохранить историю чатов", persistError);
+      }
+    },
+    [storageKey]
+  );
+
+  const commitSessions = useCallback(
+    (updater: (current: ChatSession[]) => ChatSession[]) => {
+      setSessions((current) => {
+        const next = updater(current)
+          .sort(
+            (first, second) =>
+              new Date(second.updatedAt).getTime() -
+              new Date(first.updatedAt).getTime()
+          )
+          .slice(0, MAX_SESSIONS);
+        persistSessions(next);
+        return next;
+      });
+    },
+    [persistSessions]
+  );
+
+  const openSession = useCallback(
+    (session: ChatSession) => {
+      setActiveSessionId(session.id);
+      setAgent(session.agent);
+      setMessages(session.messages);
+      setContractId(session.contractId ?? "");
+      setDocs([]);
+      setError("");
+      router.replace(`/agents/chat/${session.agent}`, { scroll: false });
+    },
+    [router]
+  );
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      let loaded: ChatSession[] = [];
+      try {
+        const remote = await api<StoredChatSession[]>(
+          "/api/agents/sessions/?limit=60"
+        );
+        loaded = remote.map(fromStoredSession);
+        if (loaded.length === 0) {
+          const cached = readSessions(storageKey);
+          loaded = cached;
+          await Promise.all(
+            cached.slice(0, 20).map((session) =>
+              api("/api/agents/sessions/", {
+                method: "POST",
+                body: {
+                  id: session.id,
+                  agent: session.agent,
+                  title: session.title,
+                  messages: session.messages,
+                  contract_id: session.contractId || null,
+                  document_name: session.documentName ?? null,
+                },
+              }).catch(() => undefined)
+            )
+          );
+        }
+      } catch {
+        loaded = readSessions(storageKey);
+      }
+      if (cancelled) return;
+      if (loaded.length > 0) {
+        setSessions(loaded);
+        openSession(loaded[0]);
+        return;
+      }
+
+      const created = createSession(initialAgentKey || "law");
+      setSessions([created]);
+      persistSessions([created]);
+      setActiveSessionId(created.id);
+      setAgent(created.agent);
+      setMessages([]);
+      void createRemoteSession(created);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialAgentKey, openSession, persistSessions, storageKey]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  const send = useMutation({
-    mutationFn: async (history: Msg[]) =>
-      api<{ reply: string }>("/api/agents/chat", {
-        method: "POST",
-        body: {
-          agent,
-          messages: history.map(({ role, content }) => ({ role, content })),
-          contract_id: contractId || null,
-          document_text: contractId ? null : (doc?.text ?? null),
-          document_name: contractId ? null : (doc?.name ?? null),
-        },
-      }),
-    onSuccess: (data, history) => {
-      setMessages([
-        ...history,
-        { role: "assistant", content: data.reply, agent },
-      ]);
-    },
-    onError: (err) =>
-      setError(err instanceof Error ? err.message : "Ошибка запроса"),
-  });
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!input.trim() || send.isPending) return;
-    setError("");
-    const history: Msg[] = [
-      ...messages,
-      { role: "user", content: input.trim() },
-    ];
-    setMessages(history);
-    setInput("");
-    send.mutate(history);
+  function saveSessionMessages(
+    sessionId: string,
+    nextMessages: ChatMessage[],
+    agentKey = agent,
+    nextContractId = contractId,
+    documentName = documentNames(docs)
+  ) {
+    const existing =
+      sessions.find((session) => session.id === sessionId) ??
+      createSession(agentKey);
+    const updated: ChatSession = {
+      ...existing,
+      id: sessionId,
+      agent: agentKey,
+      title: sessionTitle(nextMessages),
+      updatedAt: new Date().toISOString(),
+      messages: nextMessages,
+      contractId: nextContractId,
+      documentName: documentName ?? existing.documentName ?? null,
+    };
+    commitSessions((current) => {
+      return [updated, ...current.filter((session) => session.id !== sessionId)];
+    });
+    void updateRemoteSession(updated);
   }
 
-  async function attachFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError("");
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const parsed = await apiUpload<{ filename: string; text: string }>(
-        "/api/agents/parse-file",
-        form
+  function ensureActiveSession(agentKey = agent): string {
+    if (activeSessionId) return activeSessionId;
+    const created = createSession(agentKey);
+    setActiveSessionId(created.id);
+    commitSessions((current) => [created, ...current]);
+    return created.id;
+  }
+
+  function createNewChat(agentKey = agent) {
+    const created = createSession(agentKey);
+    commitSessions((current) => [created, ...current]);
+    openSession(created);
+    void createRemoteSession(created);
+    setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+  }
+
+  function deleteSession(id: string) {
+    const next = sessions.filter((session) => session.id !== id);
+    if (next.length === 0) {
+      const created = createSession(agent);
+      setSessions([created]);
+      persistSessions([created]);
+      openSession(created);
+      void api(`/api/agents/sessions/${id}`, { method: "DELETE" }).catch(
+        () => undefined
       );
-      setDoc({ name: parsed.filename, text: parsed.text });
+      void createRemoteSession(created);
+      return;
+    }
+    setSessions(next);
+    persistSessions(next);
+    if (activeSessionId === id) openSession(next[0]);
+    void api(`/api/agents/sessions/${id}`, { method: "DELETE" }).catch(
+      () => undefined
+    );
+  }
+
+  function clearCurrentChat() {
+    const sessionId = ensureActiveSession();
+    setMessages([]);
+    setInput("");
+    setDocs([]);
+    setError("");
+    commitSessions((current) =>
+      current.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              title: "Новый чат",
+              messages: [],
+              documentName: null,
+              updatedAt: new Date().toISOString(),
+            }
+          : session
+      )
+    );
+    const current = sessions.find((session) => session.id === sessionId);
+    if (current) {
+      void updateRemoteSession({
+        ...current,
+        title: "Новый чат",
+        messages: [],
+        documentName: null,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  function switchAgent(key: string) {
+    setAgent(key);
+    window.localStorage.setItem("synco:last-agent", key);
+    router.replace(`/agents/chat/${key}`, { scroll: false });
+    if (!activeSessionId) return;
+    commitSessions((current) =>
+      current.map((session) =>
+        session.id === activeSessionId
+          ? { ...session, agent: key, updatedAt: new Date().toISOString() }
+          : session
+      )
+    );
+    const current = sessions.find((session) => session.id === activeSessionId);
+    if (current) void updateRemoteSession({ ...current, agent: key });
+  }
+
+  const send = useMutation({
+    mutationFn: async ({ sessionId, agentKey, history, contractId, docs }: SendPayload) =>
+      api<{ reply: string; sources: ChatMessage["sources"] }>("/api/agents/chat", {
+        method: "POST",
+        body: {
+          agent: agentKey,
+          messages: history.map(({ role, content, agent: messageAgent, feedback, sources }) => ({
+            role,
+            content,
+            agent: messageAgent,
+            feedback,
+            sources: sources ?? [],
+          })),
+          contract_id: contractId || null,
+          document_text: contractId ? null : combinedDocumentText(docs),
+          document_name: contractId ? null : documentNames(docs),
+          session_id: sessionId,
+        },
+      }),
+    onSuccess: (data, payload) => {
+      const finalMessages: ChatMessage[] = [
+        ...payload.history,
+        {
+          role: "assistant",
+          content: data.reply,
+          agent: payload.agentKey,
+          sources: data.sources ?? [],
+        },
+      ];
+      saveSessionMessages(
+        payload.sessionId,
+        finalMessages,
+        payload.agentKey,
+        payload.contractId,
+        documentNames(payload.docs)
+      );
+      if (activeSessionIdRef.current === payload.sessionId) {
+        setMessages(finalMessages);
+      }
+    },
+    onError: (requestError) =>
+      setError(
+        requestError instanceof Error ? requestError.message : "Ошибка запроса"
+      ),
+  });
+
+  function sendText(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || send.isPending || uploading) return;
+    setError("");
+    const sessionId = ensureActiveSession();
+    const history: ChatMessage[] = [
+      ...messages,
+      { role: "user", content: trimmed },
+    ];
+    setMessages(history);
+    saveSessionMessages(sessionId, history);
+    setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+    send.mutate({ sessionId, agentKey: agent, history, contractId, docs });
+  }
+
+  function regenerateLastAnswer() {
+    if (send.isPending || uploading) return;
+    const history =
+      messages.at(-1)?.role === "assistant" ? messages.slice(0, -1) : messages;
+    if (!history.some((message) => message.role === "user")) return;
+    const sessionId = ensureActiveSession();
+    setMessages(history);
+    setError("");
+    saveSessionMessages(sessionId, history);
+    send.mutate({ sessionId, agentKey: agent, history, contractId, docs });
+  }
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    sendText(input);
+  }
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendText(input);
+    }
+  }
+
+  function grow(event: React.ChangeEvent<HTMLTextAreaElement>) {
+    setInput(event.target.value);
+    const element = event.target;
+    element.style.height = "auto";
+    element.style.height = `${Math.min(element.scrollHeight, 176)}px`;
+  }
+
+  async function attachFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(event.target.files ?? []);
+    if (selected.length === 0) return;
+    const available = MAX_ATTACHED_DOCUMENTS - docs.length;
+    if (available <= 0 || selected.length > available) {
+      setError(`Можно прикрепить не более ${MAX_ATTACHED_DOCUMENTS} файлов к одному чату`);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    setError("");
+    setUploading(true);
+    try {
+      const parsedDocuments: AttachedDocument[] = [];
+      for (const file of selected) {
+        const form = new FormData();
+        form.append("file", file);
+        const parsed = await apiParseFile(form);
+        parsedDocuments.push({
+          name: parsed.filename,
+          text: parsed.text,
+          size: file.size,
+          type: file.name.split(".").pop()?.toUpperCase() ?? "ФАЙЛ",
+          extractionMethod: parsed.extraction_method,
+          textChars: parsed.text.length,
+        });
+      }
+      const nextDocs = [...docs, ...parsedDocuments];
+      const nextDocumentName = documentNames(nextDocs);
+      setDocs(nextDocs);
       setContractId("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось прочитать файл");
+      if (activeSessionId) {
+        commitSessions((current) =>
+          current.map((session) =>
+            session.id === activeSessionId
+              ? { ...session, documentName: nextDocumentName }
+              : session
+          )
+        );
+        const current = sessions.find((session) => session.id === activeSessionId);
+        if (current) {
+          void updateRemoteSession({
+            ...current,
+            contractId: "",
+            documentName: nextDocumentName,
+          });
+        }
+      }
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Не удалось прочитать файл"
+      );
     } finally {
+      setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   }
 
+  function removeFile(index: number) {
+    const nextDocs = docs.filter((_, documentIndex) => documentIndex !== index);
+    const nextDocumentName = documentNames(nextDocs);
+    setDocs(nextDocs);
+    if (!activeSessionId) return;
+    commitSessions((current) =>
+      current.map((session) =>
+        session.id === activeSessionId
+          ? { ...session, documentName: nextDocumentName }
+          : session
+      )
+    );
+    const current = sessions.find((session) => session.id === activeSessionId);
+    if (current) void updateRemoteSession({ ...current, documentName: nextDocumentName });
+  }
+
+  function clearPersistedDocumentContext() {
+    setDocs([]);
+    if (!activeSessionId) return;
+    commitSessions((current) =>
+      current.map((session) =>
+        session.id === activeSessionId
+          ? { ...session, documentName: null, updatedAt: new Date().toISOString() }
+          : session
+      )
+    );
+    const current = sessions.find((session) => session.id === activeSessionId);
+    if (current) void updateRemoteSession({ ...current, documentName: null });
+  }
+
+  function rateMessage(messageIndex: number, rating: "up" | "down" | null) {
+    if (!activeSessionId) return;
+    const previous = messages[messageIndex]?.feedback ?? null;
+    const nextMessages = messages.map((message, index) =>
+      index === messageIndex ? { ...message, feedback: rating ?? undefined } : message
+    );
+    setMessages(nextMessages);
+    commitSessions((current) =>
+      current.map((session) =>
+        session.id === activeSessionId
+          ? { ...session, messages: nextMessages, updatedAt: new Date().toISOString() }
+          : session
+      )
+    );
+    void api(`/api/agents/sessions/${activeSessionId}/messages/${messageIndex}/feedback`, {
+      method: "PUT",
+      body: { rating },
+    }).catch((feedbackError) => {
+      const restored = messages.map((message, index) =>
+        index === messageIndex
+          ? { ...message, feedback: previous ?? undefined }
+          : message
+      );
+      setMessages(restored);
+      setError(
+        feedbackError instanceof Error
+          ? feedbackError.message
+          : "Не удалось сохранить оценку ответа"
+      );
+    });
+  }
+
+  function changeContract(id: string) {
+    setContractId(id);
+    if (id) setDocs([]);
+    if (!activeSessionId) return;
+    commitSessions((current) =>
+      current.map((session) =>
+        session.id === activeSessionId
+          ? { ...session, contractId: id, documentName: id ? null : session.documentName }
+          : session
+      )
+    );
+    const current = sessions.find((session) => session.id === activeSessionId);
+    if (current) {
+      void updateRemoteSession({
+        ...current,
+        contractId: id,
+        documentName: id ? null : current.documentName,
+      });
+    }
+  }
+
+  function exportChat() {
+    if (messages.length === 0) return;
+    const content = messages
+      .map((message) => {
+        const label =
+          message.role === "user"
+            ? "Пользователь"
+            : getAgent(message.agent ?? agent).name;
+        return `## ${label}\n\n${message.content}`;
+      })
+      .join("\n\n---\n\n");
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${sessionTitle(messages) || "chat"}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const orderedSessions = useMemo(
+    () =>
+      [...sessions].sort(
+        (first, second) =>
+          new Date(second.updatedAt).getTime() -
+          new Date(first.updatedAt).getTime()
+      ),
+    [sessions]
+  );
+
+  const userName = user?.full_name || user?.username || "Пользователь";
+  const persistedDocumentName =
+    docs.length === 0 && !contractId
+      ? sessions.find((session) => session.id === activeSessionId)?.documentName ?? null
+      : null;
+
   return (
-    <div className="max-w-4xl mx-auto flex flex-col h-[calc(100vh-8.5rem)]">
-      <Card className="flex flex-col flex-1 min-h-0">
-        {/* Шапка чата: назад + переключатель агента + контекст */}
-        <div className="flex items-center gap-3 px-5 py-3.5 border-b border-outline-variant">
-          <Link
-            href="/agents"
-            title="Все агенты"
-            className="w-9 h-9 shrink-0 rounded-lg border border-outline-variant flex items-center justify-center text-on-surface-variant hover:border-primary hover:text-primary"
-          >
-            <ArrowLeft size={18} />
-          </Link>
+    <div className="flex h-dvh min-h-[38rem] overflow-hidden bg-surface text-on-surface">
+      <ChatSidebar
+        sessions={orderedSessions}
+        activeSessionId={activeSessionId}
+        userName={userName}
+        collapsed={sidebarCollapsed}
+        mobileOpen={mobileSidebarOpen}
+        onCollapsedChange={setSidebarCollapsed}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+        onNewChat={() => createNewChat()}
+        onOpenSession={(id) => {
+          const session = sessions.find((item) => item.id === id);
+          if (session) openSession(session);
+        }}
+        onDeleteSession={deleteSession}
+      />
 
-          {/* Переключатель агента — как выбор модели */}
-          <div className="relative">
-            <select
-              value={agent}
-              onChange={(e) => switchAgent(e.target.value)}
-              className="appearance-none h-10 pl-11 pr-9 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm font-semibold outline-none focus:border-primary cursor-pointer"
-            >
-              {AGENTS.map((a) => (
-                <option key={a.key} value={a.key}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-md bg-primary text-on-primary flex items-center justify-center">
-              <Icon size={15} />
+      <main className="relative flex min-w-0 flex-1 flex-col bg-surface">
+        <header className="flex h-16 shrink-0 items-center gap-3 border-b border-outline-variant bg-surface-container-lowest px-3 sm:px-5">
+          <button
+            type="button"
+            title="Открыть меню"
+            aria-label="Открыть меню"
+            onClick={() => setMobileSidebarOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface lg:hidden"
+          >
+            <Menu size={19} />
+          </button>
+          <button
+            type="button"
+            title="Вернуться в рабочее пространство"
+            aria-label="Вернуться в рабочее пространство"
+            onClick={() => router.push("/dashboard")}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-on-surface-variant outline-none transition-colors hover:bg-surface-container hover:text-on-surface focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <ArrowLeft size={19} />
+          </button>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-fixed text-primary">
+            <ActiveIcon size={18} />
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-sm font-semibold text-on-surface">{active.name}</span>
+              <span className="hidden items-center gap-1 text-[10px] font-medium text-success sm:inline-flex">
+                <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                Активен
+              </span>
             </div>
-            <ChevronDown
-              size={15}
-              className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant"
-            />
+            <div className="truncate text-xs text-on-surface-variant">{active.role}</div>
           </div>
-
-          <div className="flex-1" />
-
-          <select
-            value={contractId}
-            onChange={(e) => {
-              setContractId(e.target.value);
-              if (e.target.value) setDoc(null);
-            }}
-            className="h-9 px-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-xs outline-none focus:border-primary max-w-48"
-            title="Контракт как контекст разговора"
-          >
-            <option value="">Без контракта</option>
-            {contracts.data?.items.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.title}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Сообщения */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {messages.length === 0 && (
-            <div className="text-center pt-20">
-              <div className="w-12 h-12 rounded-xl bg-primary-fixed text-primary flex items-center justify-center mx-auto">
-                <Icon size={24} />
-              </div>
-              <div className="font-semibold mt-3">{active.name}</div>
-              <p className="text-sm text-on-surface-variant mt-1 max-w-md mx-auto">
-                {active.text}
-              </p>
-              <p className="text-xs text-outline mt-3">{active.hint}</p>
-            </div>
-          )}
-          {messages.map((m, i) => (
-            <div
-              key={i}
-              className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div className="max-w-[85%]">
-                {m.role === "assistant" && m.agent && (
-                  <div className="text-[11px] text-on-surface-variant mb-1 ml-1">
-                    {getAgent(m.agent).name}
-                  </div>
-                )}
-                <div
-                  className={`rounded-xl px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
-                    m.role === "user"
-                      ? "bg-primary text-on-primary"
-                      : "bg-surface-container-low border border-outline-variant"
-                  }`}
-                >
-                  {m.content}
-                </div>
-              </div>
-            </div>
-          ))}
-          {send.isPending && (
-            <div className="flex justify-start">
-              <div className="rounded-xl px-4 py-2.5 text-sm bg-surface-container-low border border-outline-variant text-on-surface-variant">
-                {active.name} думает…
-              </div>
-            </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
-
-        {/* Ввод */}
-        <div className="border-t border-outline-variant p-4 space-y-2">
-          {error && <ErrorNote message={error} />}
-          {doc && !contractId && (
-            <div className="flex items-center gap-2 text-xs bg-primary-fixed/50 text-primary rounded-lg px-3 py-1.5 w-fit">
-              <Paperclip size={12} />
-              {doc.name}
-              <button
-                onClick={() => setDoc(null)}
-                className="cursor-pointer hover:text-error"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          )}
-          <form onSubmit={submit} className="flex items-center gap-2">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".pdf,.docx,.txt"
-              className="hidden"
-              onChange={attachFile}
-            />
+          <div className="ml-auto flex items-center gap-1">
             <button
               type="button"
-              title="Приложить документ (PDF/DOCX/TXT)"
-              onClick={() => fileRef.current?.click()}
-              className="w-10 h-10 shrink-0 rounded-lg border border-outline-variant flex items-center justify-center text-on-surface-variant hover:border-primary hover:text-primary cursor-pointer"
+              title="Новый чат"
+              aria-label="Новый чат"
+              onClick={() => createNewChat()}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
             >
-              <Paperclip size={18} />
+              <MessageSquarePlus size={18} />
             </button>
-            <input
-              autoFocus
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={`Сообщение для ${active.name}...`}
-              className="flex-1 h-10 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm outline-none focus:border-primary placeholder:text-outline"
-            />
             <button
-              type="submit"
-              disabled={send.isPending || !input.trim()}
-              className="w-10 h-10 shrink-0 rounded-lg bg-primary text-on-primary flex items-center justify-center hover:bg-primary-hover disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              type="button"
+              title="Экспортировать чат"
+              aria-label="Экспортировать чат"
+              disabled={messages.length === 0}
+              onClick={exportChat}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface disabled:opacity-35"
             >
-              <Send size={18} />
+              <Download size={18} />
             </button>
-          </form>
+            <button
+              type="button"
+              title="Очистить чат"
+              aria-label="Очистить чат"
+              disabled={messages.length === 0}
+              onClick={clearCurrentChat}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant hover:bg-error-container hover:text-error disabled:opacity-35"
+            >
+              <Trash2 size={18} />
+            </button>
+          </div>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <MessageList
+            messages={messages}
+            agentKey={agent}
+            pending={send.isPending}
+            bottomRef={bottomRef}
+            onPrompt={sendText}
+            onRegenerate={regenerateLastAnswer}
+            onFeedback={rateMessage}
+          />
         </div>
-      </Card>
+
+        <ChatComposer
+          value={input}
+          agentKey={agent}
+          pending={send.isPending}
+          documents={docs}
+          uploading={uploading}
+          persistedDocumentName={persistedDocumentName}
+          contractId={contractId}
+          contracts={contracts.data?.items ?? []}
+          error={error}
+          textareaRef={textareaRef}
+          fileRef={fileRef}
+          onValueChange={grow}
+          onKeyDown={onKeyDown}
+          onSubmit={submit}
+          onAgentChange={switchAgent}
+          onFileChange={attachFile}
+          onRemoveFile={removeFile}
+          onClearPersistedDocument={clearPersistedDocumentContext}
+          onContractChange={changeContract}
+        />
+      </main>
     </div>
   );
 }

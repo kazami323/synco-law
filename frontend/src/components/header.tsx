@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Check, CheckCheck, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { ROLE_LABELS, type Notification as AppNotification } from "@/lib/types";
@@ -201,13 +201,13 @@ export function Header({ onMenu }: { onMenu?: () => void }) {
 }
 
 function ThemeToggle() {
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(() =>
+    typeof document !== "undefined"
+      ? document.documentElement.classList.contains("dark")
+      : false
+  );
 
   // Класс уже выставлен инлайн-скриптом в layout — читаем фактическое состояние
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains("dark"));
-  }, []);
-
   function toggle() {
     const next = !dark;
     setDark(next);

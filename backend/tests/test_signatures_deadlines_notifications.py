@@ -74,6 +74,27 @@ async def test_sign_request_and_confirm_stores_eimzo_stub(client, admin_headers)
     assert detail["certificate_thumbprint"] == confirmed["certificate_thumbprint"]
 
 
+async def test_stub_signature_can_be_disabled(client, admin_headers, monkeypatch):
+    from app.api import contracts as contracts_api
+
+    contract = await _create_contract(client, admin_headers)
+    await _move_to_ready_to_sign(client, admin_headers, contract["id"])
+    request_resp = await client.post(
+        f"/api/contracts/{contract['id']}/sign-request",
+        json={},
+        headers=admin_headers,
+    )
+    assert request_resp.status_code == 200
+
+    monkeypatch.setattr(contracts_api.settings, "ALLOW_STUB_SIGNATURES", False)
+    confirm_resp = await client.post(
+        f"/api/contracts/{contract['id']}/sign-confirm",
+        json={"request_id": request_resp.json()["request_id"], "pin": "123456"},
+        headers=admin_headers,
+    )
+    assert confirm_resp.status_code == 400
+
+
 async def test_sign_confirm_requires_pending_request(client, admin_headers):
     contract = await _create_contract(client, admin_headers)
     await _move_to_ready_to_sign(client, admin_headers, contract["id"])
@@ -322,8 +343,14 @@ async def test_read_all_notifications(client, admin_headers):
     assert after["count"] == 0
 
 
-async def test_sign_confirm_with_real_pkcs7(client, admin_headers):
+async def test_sign_confirm_with_real_pkcs7(client, admin_headers, monkeypatch):
     """Подпись реальным PKCS#7 от E-IMZO: сохраняется как есть, тип eimzo."""
+    from app.api import contracts as contracts_api
+
+    async def dsv_accept(pkcs7: str, expected_hash: str):
+        return bool(pkcs7 and expected_hash)
+
+    monkeypatch.setattr(contracts_api, "verify_pkcs7_via_dsv", dsv_accept)
     contract = await _create_contract(client, admin_headers, title="E-IMZO real")
     await _move_to_ready_to_sign(client, admin_headers, contract["id"])
     request_resp = await client.post(
@@ -343,20 +370,22 @@ async def test_sign_confirm_with_real_pkcs7(client, admin_headers):
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["signature"] == "MIIC...FAKE_PKCS7_BASE64"
-    assert resp.json()["certificate_thumbprint"] == "AB123456"
+    thumbprint = resp.json()["certificate_thumbprint"]
+    assert len(thumbprint) == 40
+    assert thumbprint != "AB123456"
 
     detail = (
         await client.get(f"/api/contracts/{contract['id']}", headers=admin_headers)
     ).json()
     assert detail["status"] == "signed"
-    assert detail["certificate_thumbprint"] == "AB123456"
+    assert detail["certificate_thumbprint"] == thumbprint
 
 
 async def test_sign_confirm_rejected_by_dsv(client, admin_headers, monkeypatch):
     """Если настроен DSV и он отверг подпись — 400, контракт не подписан."""
     from app.api import contracts as contracts_api
 
-    async def dsv_reject(pkcs7: str):
+    async def dsv_reject(pkcs7: str, expected_hash: str):
         return False
 
     monkeypatch.setattr(contracts_api, "verify_pkcs7_via_dsv", dsv_reject)
@@ -368,7 +397,7 @@ async def test_sign_confirm_rejected_by_dsv(client, admin_headers, monkeypatch):
     )
     resp = await client.post(
         f"/api/contracts/{contract['id']}/sign-confirm",
-        json={"signature": "BAD_PKCS7"},
+        json={"signature": "BAD_PKCS7", "certificate": "cn=Rejected"},
         headers=admin_headers,
     )
     assert resp.status_code == 400

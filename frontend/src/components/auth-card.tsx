@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { IdCard, Lock, Mail, Scale, UserRound } from "lucide-react";
+import { IdCard, KeyRound, Lock, Mail, Scale, UserRound } from "lucide-react";
+import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { homeFor } from "@/lib/permissions";
@@ -16,6 +17,8 @@ export function AuthCard({ initialMode }: { initialMode: "login" | "register" })
   const [active, setActive] = useState(initialMode === "register");
 
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaRequired, setMfaRequired] = useState(false);
   const [regForm, setRegForm] = useState({
     full_name: "",
     email: "",
@@ -35,16 +38,25 @@ export function AuthCard({ initialMode }: { initialMode: "login" | "register" })
     setError("");
     setBusy(true);
     try {
-      const me = await login(loginForm.email, loginForm.password);
+      const me = await login(loginForm.email, loginForm.password, mfaCode);
       router.replace(me.organization_id ? homeFor(me) : "/onboarding");
     } catch (err) {
-      setError(
-        err instanceof ApiError && err.status === 401
+      if (
+        err instanceof ApiError &&
+        err.status === 403 &&
+        err.message.includes("MFA")
+      ) {
+        setMfaRequired(true);
+        setError("Введите шестизначный код из приложения-аутентификатора");
+      } else {
+        setError(
+          err instanceof ApiError && err.status === 401
           ? "Неверная почта или пароль"
           : err instanceof Error
             ? err.message
             : "Ошибка входа"
-      );
+        );
+      }
       setBusy(false);
     }
   }
@@ -106,6 +118,25 @@ export function AuthCard({ initialMode }: { initialMode: "login" | "register" })
               />
               <Lock size={19} />
             </div>
+            {mfaRequired && (
+              <div className="auth-input">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="Код MFA"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  minLength={6}
+                  maxLength={6}
+                  required
+                />
+                <KeyRound size={19} />
+              </div>
+            )}
+            <Link href="/forgot-password" className="mb-3 block text-right text-xs text-primary hover:underline">
+              Забыли пароль?
+            </Link>
             {!active && error && <ErrorNote message={error} />}
             <button type="submit" className="auth-btn" disabled={busy}>
               {busy && !active ? "Входим..." : "Войти"}
@@ -159,13 +190,13 @@ export function AuthCard({ initialMode }: { initialMode: "login" | "register" })
             <div className="auth-input">
               <input
                 type="password"
-                placeholder="Пароль (минимум 8 символов)"
+                placeholder="Пароль: минимум 10 символов, буквы и цифры"
                 value={regForm.password}
                 onChange={(e) =>
                   setRegForm({ ...regForm, password: e.target.value })
                 }
                 required
-                minLength={8}
+                minLength={10}
               />
               <Lock size={19} />
             </div>

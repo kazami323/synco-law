@@ -6,13 +6,13 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import require_permission
-from app.core.security import hash_password
+from app.core.security import hash_password, validate_password
 from app.db.base import get_db
 from app.db.models import Role, User
 from app.db.schemas import UserOut
@@ -25,9 +25,9 @@ VALID_ROLES = {r.value for r in Role}
 
 class UserCreateRequest(BaseModel):
     email: EmailStr
-    username: str
-    password: str
-    full_name: str | None = None
+    username: str = Field(min_length=2, max_length=128, pattern=r"^[A-Za-z0-9_.-]+$")
+    password: str = Field(min_length=10, max_length=128)
+    full_name: str | None = Field(default=None, max_length=256)
     role: str = Role.LAWYER.value
 
 
@@ -68,8 +68,8 @@ def _validate_role(role: str, acting_user: User) -> None:
 
 @router.get("/", response_model=UserListResponse)
 async def list_users(
-    page: int = 1,
-    limit: int = 20,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
     user: User = Depends(require_permission("view_all")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -100,6 +100,10 @@ async def create_user(
     """Создать сотрудника в своей организации."""
     org_id = _require_org(user)
     _validate_role(data.role, user)
+    try:
+        validate_password(data.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     existing = await db.execute(
         select(User).where(

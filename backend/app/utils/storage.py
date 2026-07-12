@@ -1,5 +1,7 @@
 """Файловое хранилище MinIO (S3-совместимое)."""
 
+import asyncio
+import mimetypes
 import uuid
 
 import boto3
@@ -38,8 +40,18 @@ def upload_file(data: bytes, filename: str, org_id: uuid.UUID) -> str:
     """Кладёт файл в бакет, возвращает ключ (file_path контракта)."""
     ensure_bucket()
     key = f"{org_id}/{uuid.uuid4()}/{filename}"
-    get_s3().put_object(Bucket=settings.MINIO_BUCKET, Key=key, Body=data)
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    get_s3().put_object(
+        Bucket=settings.MINIO_BUCKET,
+        Key=key,
+        Body=data,
+        ContentType=content_type,
+    )
     return key
+
+
+async def upload_file_async(data: bytes, filename: str, org_id: uuid.UUID) -> str:
+    return await asyncio.to_thread(upload_file, data, filename, org_id)
 
 
 def presigned_download_url(key: str, expires_seconds: int = 3600) -> str:

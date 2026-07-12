@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Building2 } from "lucide-react";
+import { Building2, KeyRound } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Button, Card, ErrorNote, Input } from "@/components/ui";
@@ -10,19 +10,41 @@ import { Button, Card, ErrorNote, Input } from "@/components/ui";
 export default function OnboardingPage() {
   const { user, loading, refresh } = useAuth();
   const router = useRouter();
+  const [joinCode, setJoinCode] = useState("");
   const [form, setForm] = useState({ name: "", email: "", phone: "" });
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"join" | "create" | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
     if (!loading && user?.organization_id) router.replace("/dashboard");
   }, [loading, user, router]);
 
-  async function onSubmit(e: React.FormEvent) {
+  async function finish() {
+    await refresh();
+    router.replace("/dashboard");
+  }
+
+  async function onJoin(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    setBusy(true);
+    setBusy("join");
+    try {
+      await api("/api/organizations/join", {
+        method: "POST",
+        body: { invite_code: joinCode },
+      });
+      await finish();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка присоединения");
+      setBusy(null);
+    }
+  }
+
+  async function onCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setBusy("create");
     try {
       await api("/api/organizations/", {
         method: "POST",
@@ -32,11 +54,10 @@ export default function OnboardingPage() {
           phone: form.phone || null,
         },
       });
-      await refresh();
-      router.replace("/dashboard");
+      await finish();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка");
-      setBusy(false);
+      setError(err instanceof Error ? err.message : "Ошибка создания");
+      setBusy(null);
     }
   }
 
@@ -44,16 +65,40 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
-      <Card className="w-full max-w-md p-8">
+      <Card className="w-full max-w-lg p-8">
         <div className="w-12 h-12 rounded-lg bg-primary-fixed text-primary flex items-center justify-center mb-4">
-          <Building2 size={24} />
+          <KeyRound size={24} />
         </div>
-        <h2 className="text-2xl font-semibold">Создайте организацию</h2>
+        <h2 className="text-2xl font-semibold">Присоединитесь к организации</h2>
         <p className="text-sm text-on-surface-variant mt-1 mb-6">
-          Вы станете её администратором и сможете пригласить команду.
+          Введите код приглашения от администратора или создайте новую организацию.
         </p>
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onJoin} className="space-y-4">
+          <Input
+            label="Код приглашения"
+            placeholder="Например: A1B2C3D4E5"
+            value={joinCode}
+            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+            required
+          />
+          <Button
+            type="submit"
+            loading={busy === "join"}
+            disabled={!joinCode.trim() || busy !== null}
+            className="w-full"
+          >
+            Присоединиться
+          </Button>
+        </form>
+
+        <div className="my-6 border-t border-outline-variant" />
+
+        <div className="flex items-center gap-2 mb-4">
+          <Building2 size={18} className="text-primary" />
+          <h3 className="font-semibold">Создать новую организацию</h3>
+        </div>
+        <form onSubmit={onCreate} className="space-y-4">
           <Input
             label="Название организации"
             placeholder='ООО "Компания"'
@@ -62,19 +107,25 @@ export default function OnboardingPage() {
             required
           />
           <Input
-            label="Email организации (необязательно)"
+            label="Email организации"
             type="email"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
           <Input
-            label="Телефон (необязательно)"
+            label="Телефон"
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
           />
           {error && <ErrorNote message={error} />}
-          <Button type="submit" disabled={busy} className="w-full">
-            {busy ? "Создаём..." : "Создать организацию"}
+          <Button
+            type="submit"
+            variant="secondary"
+            loading={busy === "create"}
+            disabled={busy !== null}
+            className="w-full"
+          >
+            Создать организацию
           </Button>
         </form>
       </Card>

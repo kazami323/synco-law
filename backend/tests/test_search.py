@@ -103,14 +103,14 @@ async def test_lawyer_sees_only_own_in_search(client, admin_headers):
         json={
             "email": "law@test.uz",
             "username": "law",
-            "password": "secret123",
+            "password": "Secret1234",
             "role": "lawyer",
         },
         headers=admin_headers,
     )
     assert resp.status_code == 201
     login = await client.post(
-        "/api/auth/login", json={"email": "law@test.uz", "password": "secret123"}
+        "/api/auth/login", json={"email": "law@test.uz", "password": "Secret1234"}
     )
     lawyer = {"Authorization": f"Bearer {login.json()['access_token']}"}
 

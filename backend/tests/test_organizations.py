@@ -48,13 +48,13 @@ async def test_lawyer_cannot_update_organization(client, admin_headers):
     # админ создаёт юриста в своей организации
     resp = await client.post(
         "/api/users/",
-        json={"email": "lw@test.uz", "username": "lw", "password": "secret123"},
+        json={"email": "lw@test.uz", "username": "lawyer-user", "password": "Secret1234"},
         headers=admin_headers,
     )
     assert resp.status_code == 201
 
     lawyer_login = await client.post(
-        "/api/auth/login", json={"email": "lw@test.uz", "password": "secret123"}
+        "/api/auth/login", json={"email": "lw@test.uz", "password": "Secret1234"}
     )
     lawyer_headers = {
         "Authorization": f"Bearer {lawyer_login.json()['access_token']}"

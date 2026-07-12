@@ -28,6 +28,10 @@ def _ensure_test_db() -> None:
 
 @pytest.fixture(autouse=True)
 def _no_search_indexing(monkeypatch):
+    # Redis rate limits intentionally survive between production requests.
+    # Tests recreate the database per case and must not share those counters.
+    monkeypatch.setattr(settings, "ENVIRONMENT", "test")
+
     """Тесты не должны писать в боевой Elasticsearch-индекс."""
 
     async def noop(contract) -> None:

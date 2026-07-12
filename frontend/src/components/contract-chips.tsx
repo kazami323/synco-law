@@ -1,5 +1,43 @@
+import {
+  Briefcase,
+  FileText,
+  Handshake,
+  KeyRound,
+  Lock,
+  ShoppingCart,
+  type LucideIcon,
+} from "lucide-react";
 import { Chip } from "@/components/ui";
 import { CONTRACT_TYPES } from "@/lib/types";
+
+const TYPE_ICONS: Record<string, LucideIcon> = {
+  purchase: ShoppingCart,
+  lease: KeyRound,
+  service: Handshake,
+  nda: Lock,
+  employment: Briefcase,
+  other: FileText,
+};
+
+/** Иконка типа договора в мягком квадрате — для списков и карточек. */
+export function TypeIcon({
+  type,
+  size = 18,
+  className = "",
+}: {
+  type: string | null;
+  size?: number;
+  className?: string;
+}) {
+  const Icon = (type && TYPE_ICONS[type]) || FileText;
+  return (
+    <span
+      className={`flex items-center justify-center rounded-lg bg-primary-fixed text-primary ${className}`}
+    >
+      <Icon size={size} />
+    </span>
+  );
+}
 
 export const STATUS_LABELS: Record<
   string,

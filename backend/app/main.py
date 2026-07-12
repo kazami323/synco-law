@@ -1,16 +1,17 @@
 import asyncio
-import logging
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api import (
     agents,
     auth,
+    chat_sessions,
     contracts,
     dashboard,
+    legal,
     notifications,
     organizations,
     projects,
@@ -19,53 +20,18 @@ from app.api import (
     workflow,
 )
 from app.core.config import settings
-from app.db.base import async_session_factory, engine
-from app.services.notifications import create_deadline_notifications
-from app.services.notifications import deliver as notify_deliver
+from app.db.base import engine
+from app.services.background import start_background_tasks
+from app.services.legal_search import ensure_index as ensure_legal_index
 from app.services.search import ensure_index
-from app.services.telegram import poll_link_updates, telegram_enabled
 
 settings.validate_runtime()
-
-logger = logging.getLogger("app.deadlines")
-
-
-async def _deadline_notification_loop() -> None:
-    while True:
-        try:
-            async with async_session_factory() as session:
-                created = await create_deadline_notifications(session)
-                await session.commit()
-                for recipient, text in created:
-                    await notify_deliver(recipient, text)
-                if created:
-                    logger.info("deadline notifications created: %s", len(created))
-        except Exception:
-            logger.exception("deadline notification loop failed")
-        await asyncio.sleep(24 * 60 * 60)
-
-
-async def _telegram_link_loop() -> None:
-    """Опрос Telegram getUpdates для привязки аккаунтов (если задан токен)."""
-    if not telegram_enabled():
-        return
-    offset: int | None = None
-    while True:
-        try:
-            async with async_session_factory() as session:
-                offset = await poll_link_updates(session, offset)
-        except Exception:
-            logger.exception("telegram link loop failed")
-        await asyncio.sleep(15)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await ensure_index()  # без ES поиск работает через SQL fallback
-    tasks = [
-        asyncio.create_task(_deadline_notification_loop()),
-        asyncio.create_task(_telegram_link_loop()),
-    ]
+    await ensure_legal_index()
+    tasks = start_background_tasks() if settings.RUN_BACKGROUND_JOBS else []
     app.state.background_tasks = tasks
     try:
         yield
@@ -96,7 +62,9 @@ app.include_router(users.router)
 app.include_router(contracts.router)
 app.include_router(projects.router)
 app.include_router(agents.router)
+app.include_router(chat_sessions.router)
 app.include_router(dashboard.router)
+app.include_router(legal.router)
 app.include_router(notifications.router)
 app.include_router(workflow.router)
 app.include_router(search.router)
@@ -104,15 +72,19 @@ app.include_router(search.router)
 
 @app.get("/health", tags=["system"])
 async def health() -> dict:
-    """Проверка живости сервиса и подключения к БД."""
-    db_status = "ok"
+    """Readiness check: returns 503 when the database is unavailable."""
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-    except Exception:
-        db_status = "unavailable"
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="database unavailable") from exc
     return {
         "status": "ok",
         "version": settings.APP_VERSION,
-        "database": db_status,
+        "database": "ok",
     }
+
+
+@app.get("/health/live", tags=["system"])
+async def liveness() -> dict:
+    return {"status": "ok", "version": settings.APP_VERSION}

@@ -5,8 +5,12 @@ import {
   CheckCircle2,
   CircleAlert,
   CircleHelp,
+  Files,
+  Gauge,
+  Loader,
   Table2,
   TriangleAlert,
+  Wallet,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -111,16 +115,31 @@ export default function AnalysisPage() {
         <div className="mt-6 space-y-6">
           {/* KPI-плитки */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatTile label="Всего контрактов" value={String(d.totals.contracts)} />
+            <StatTile
+              label="Всего контрактов"
+              value={String(d.totals.contracts)}
+              tint="primary"
+              icon={Files}
+            />
             <StatTile
               label="Сумма подписанных"
-              value={`${formatAmount(d.totals.signed_amount)} UZS`}
+              value={formatAmount(d.totals.signed_amount)}
+              hint=" UZS"
+              tint="success"
+              icon={Wallet}
             />
-            <StatTile label="В работе" value={String(d.totals.in_work)} />
+            <StatTile
+              label="В работе"
+              value={String(d.totals.in_work)}
+              tint="warning"
+              icon={Loader}
+            />
             <StatTile
               label="Средний риск"
               value={d.totals.avg_risk !== null ? `${d.totals.avg_risk}` : "—"}
               hint="/100"
+              tint="error"
+              icon={Gauge}
             />
           </div>
 
@@ -174,28 +193,44 @@ export default function AnalysisPage() {
   );
 }
 
+const TILE_RING: Record<string, string> = {
+  primary: "bg-primary-fixed text-primary",
+  success: "bg-success/10 text-success",
+  warning: "bg-warning/10 text-warning",
+  error: "bg-error/10 text-error",
+};
+
 function StatTile({
   label,
   value,
   hint,
+  tint = "primary",
+  icon: Icon,
 }: {
   label: string;
   value: string;
   hint?: string;
+  tint?: "primary" | "success" | "warning" | "error";
+  icon?: React.ComponentType<{ size?: number }>;
 }) {
   return (
-    <Card className="p-4">
-      <div className="text-[11px] font-semibold uppercase text-on-surface-variant">
-        {label}
-      </div>
-      <div className="text-3xl font-semibold mt-2">
+    <Card className="p-5 transition-shadow hover:shadow-sm">
+      {Icon && (
+        <span
+          className={`flex h-10 w-10 items-center justify-center rounded-xl ${TILE_RING[tint]}`}
+        >
+          <Icon size={20} />
+        </span>
+      )}
+      <div className="mt-3 text-3xl font-semibold tabular-nums">
         {value}
         {hint && (
-          <span className="text-sm text-on-surface-variant font-normal">
+          <span className="text-sm font-normal text-on-surface-variant">
             {hint}
           </span>
         )}
       </div>
+      <div className="mt-0.5 text-sm text-on-surface-variant">{label}</div>
     </Card>
   );
 }
@@ -223,7 +258,48 @@ function TrendCard({ months }: { months: Analytics["months"] }) {
   const path = (key: "created" | "signed") =>
     months.map((m, i) => `${i === 0 ? "M" : "L"}${x(i)},${y(m[key])}`).join(" ");
 
+  // Замкнутая область под линией для мягкой заливки
+  const area = (key: "created" | "signed") => {
+    const base = PAD.top + plotH;
+    const last = months.length - 1;
+    return `${path(key)} L${x(last)},${base} L${x(0)},${base} Z`;
+  };
+
   const yTicks = [0, Math.round(yMax / 2), yMax];
+
+  const endLabelY = (() => {
+    if (months.length === 0) return { created: 0, signed: 0 };
+
+    const last = months[months.length - 1];
+    const raw = {
+      created: y(last.created),
+      signed: y(last.signed),
+    };
+    const minGap = 16;
+
+    if (Math.abs(raw.created - raw.signed) >= minGap) return raw;
+
+    const center = (raw.created + raw.signed) / 2;
+    const topLimit = PAD.top + 6;
+    const bottomLimit = PAD.top + plotH - 4;
+
+    if (center + minGap / 2 > bottomLimit) {
+      return {
+        created: bottomLimit - minGap,
+        signed: bottomLimit,
+      };
+    }
+    if (center - minGap / 2 < topLimit) {
+      return {
+        created: topLimit,
+        signed: topLimit + minGap,
+      };
+    }
+    return {
+      created: center - minGap / 2,
+      signed: center + minGap / 2,
+    };
+  })();
 
   return (
     <Card className="p-6">
@@ -285,6 +361,27 @@ function TrendCard({ months }: { months: Analytics["months"] }) {
             className="w-full min-w-[560px]"
             onMouseLeave={() => setHoverIdx(null)}
           >
+            <defs>
+              {(Object.keys(SERIES) as ("created" | "signed")[]).map((key) => (
+                <linearGradient
+                  key={key}
+                  id={`area-${key}`}
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop offset="0%" stopColor={SERIES[key].color} stopOpacity="0.16" />
+                  <stop offset="100%" stopColor={SERIES[key].color} stopOpacity="0" />
+                </linearGradient>
+              ))}
+            </defs>
+
+            {/* Мягкая заливка под линиями */}
+            {(Object.keys(SERIES) as ("created" | "signed")[]).map((key) => (
+              <path key={key} d={area(key)} fill={`url(#area-${key})`} stroke="none" />
+            ))}
+
             {/* Сетка — приглушённая */}
             {yTicks.map((t) => (
               <g key={t}>
@@ -360,20 +457,36 @@ function TrendCard({ months }: { months: Analytics["months"] }) {
                 />
               ))}
 
-            {/* Прямые подписи у концов линий */}
+            {/* Прямые подписи у концов линий с разведением близких значений */}
             {months.length > 0 &&
-              (Object.keys(SERIES) as ("created" | "signed")[]).map((key) => (
-                <text
-                  key={key}
-                  x={W - PAD.right + 8}
-                  y={y(months[months.length - 1][key]) + 4}
-                  fontSize="12"
-                  fontWeight="600"
-                  fill="var(--color-on-surface)"
-                >
-                  {SERIES[key].label}
-                </text>
-              ))}
+              (Object.keys(SERIES) as ("created" | "signed")[]).map((key) => {
+                const lastIndex = months.length - 1;
+                const pointY = y(months[lastIndex][key]);
+                const labelX = W - PAD.right + 10;
+                return (
+                  <g key={key}>
+                    <line
+                      x1={x(lastIndex) + 3}
+                      x2={labelX - 4}
+                      y1={pointY}
+                      y2={endLabelY[key]}
+                      stroke={SERIES[key].color}
+                      strokeWidth="1"
+                      opacity="0.75"
+                    />
+                    <text
+                      x={labelX}
+                      y={endLabelY[key]}
+                      dominantBaseline="middle"
+                      fontSize="11"
+                      fontWeight="600"
+                      fill={SERIES[key].color}
+                    >
+                      {SERIES[key].label}
+                    </text>
+                  </g>
+                );
+              })}
 
             {/* Зоны наведения — шире маркеров */}
             {months.map((m, i) => (

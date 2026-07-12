@@ -6,6 +6,7 @@ export interface User {
   role: string;
   organization_id: string | null;
   is_active: boolean;
+  mfa_enabled: boolean;
 }
 
 export interface Organization {
@@ -15,6 +16,7 @@ export interface Organization {
   phone: string | null;
   address: string | null;
   country: string;
+  invite_code: string;
   compliance_policies: string | null;
 }
 
@@ -28,7 +30,6 @@ export interface DashboardMetrics {
   upcoming_deadlines_count: number;
   upcoming_deadlines: UpcomingDeadline[];
   avg_review_time: number | null;
-  hours_saved: number;
 }
 
 export interface Contract {

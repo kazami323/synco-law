@@ -5,6 +5,7 @@ external) — только созданные самим пользовател�
 """
 
 import csv
+import hashlib
 import io
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -15,6 +16,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     Request,
     Response,
     UploadFile,
@@ -24,7 +26,8 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user
+from app.core.config import settings
+from app.core.dependencies import get_current_user, get_upload_user
 from app.core.permissions import ROLE_PERMISSIONS, require_permission
 from app.db.base import get_db
 from app.db.models import (
@@ -53,14 +56,17 @@ from app.db.schemas import (
 from app.services.deadlines import add_parsed_deadlines, days_left
 from app.services.notifications import create_deadline_notifications, deliver
 from app.services import search as search_service
+from app.services.ai_usage import enforce_ai_access, record_ai_usage
 from app.services.signature import (
     contract_hash,
     stub_signature,
     verify_pkcs7_via_dsv,
 )
 from app.utils.audit import log_action
-from app.utils.document_parser import parse_file
-from app.utils.storage import presigned_download_url, upload_file
+from app.utils.document_parser import parse_file, pdf_needs_ocr
+from app.utils.llm import collect_usage, extract_pdf_text
+from app.utils.storage import presigned_download_url, upload_file_async
+from app.utils.upload_security import UploadSecurityError, secure_upload
 
 router = APIRouter(prefix="/api/contracts", tags=["contracts"])
 
@@ -99,15 +105,20 @@ def _require_org(user: User) -> uuid.UUID:
 
 
 async def get_visible_contract(
-    contract_id: uuid.UUID, user: User, db: AsyncSession
+    contract_id: uuid.UUID,
+    user: User,
+    db: AsyncSession,
+    *,
+    for_update: bool = False,
 ) -> Contract:
     """Контракт организации пользователя с учётом права видимости."""
     org_id = _require_org(user)
-    result = await db.execute(
-        select(Contract).where(
-            Contract.id == contract_id, Contract.organization_id == org_id
-        )
+    query = select(Contract).where(
+        Contract.id == contract_id, Contract.organization_id == org_id
     )
+    if for_update:
+        query = query.with_for_update()
+    result = await db.execute(query)
     contract = result.scalar_one_or_none()
     if contract is None:
         raise HTTPException(status_code=404, detail="Contract not found")
@@ -231,21 +242,28 @@ async def create_contract_from_file(
     currency: str = Form("UZS"),
     project_id: uuid.UUID | None = Form(None),
     file: UploadFile = File(...),
-    user: User = Depends(require_permission("create")),
+    user: User = Depends(get_upload_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Создать контракт из файла PDF/DOCX/TXT: текст извлекается автоматически."""
+    if "create" not in ROLE_PERMISSIONS.get(user.role, []):
+        raise HTTPException(status_code=403, detail="Permission denied")
     org_id = _require_org(user)
 
-    data = await file.read()
-    if len(data) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="Файл больше 20 МБ")
     try:
-        content = parse_file(file.filename or "document", data)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        filename, data = await secure_upload(file)
+        content = parse_file(filename, data)
+        if pdf_needs_ocr(filename, content):
+            await enforce_ai_access(db, user)
+            with collect_usage() as usage:
+                content = await extract_pdf_text(data, filename)
+            record_ai_usage(db, user, usage, endpoint="pdf_ocr", agent="document_parser")
+    except UploadSecurityError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    file_path = upload_file(data, file.filename or "document", org_id)
+    file_path = await upload_file_async(data, filename, org_id)
 
     return await _create_contract_row(
         db,
@@ -264,8 +282,8 @@ async def create_contract_from_file(
 
 @router.get("/", response_model=ContractListResponse)
 async def list_contracts(
-    page: int = 1,
-    limit: int = 20,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
     status_filter: str | None = None,
     q: str | None = None,
     project_id: uuid.UUID | None = None,
@@ -365,7 +383,7 @@ async def export_registry_csv(
 
 @router.get("/upcoming-deadlines", response_model=list[UpcomingDeadlineOut])
 async def list_upcoming_deadlines(
-    limit: int = 20,
+    limit: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -411,7 +429,7 @@ async def request_signature(
     user: User = Depends(require_permission("sign")),
     db: AsyncSession = Depends(get_db),
 ):
-    contract = await get_visible_contract(contract_id, user, db)
+    contract = await get_visible_contract(contract_id, user, db, for_update=True)
     if contract.status != "ready_to_sign":
         raise HTTPException(
             status_code=409,
@@ -447,7 +465,7 @@ async def confirm_signature(
     user: User = Depends(require_permission("sign")),
     db: AsyncSession = Depends(get_db),
 ):
-    contract = await get_visible_contract(contract_id, user, db)
+    contract = await get_visible_contract(contract_id, user, db, for_update=True)
     if contract.status != "ready_to_sign":
         raise HTTPException(
             status_code=409,
@@ -460,7 +478,7 @@ async def confirm_signature(
     )
     if data and data.request_id:
         query = query.where(SignRequest.id == data.request_id)
-    query = query.order_by(SignRequest.created_at.desc()).limit(1)
+    query = query.order_by(SignRequest.created_at.desc()).limit(1).with_for_update()
     sign_request = (await db.execute(query)).scalar_one_or_none()
     if sign_request is None:
         raise HTTPException(status_code=404, detail="Pending sign request not found")
@@ -473,12 +491,20 @@ async def confirm_signature(
         )
 
     is_real_signature = bool(data and data.signature)
+    if not is_real_signature and not settings.ALLOW_STUB_SIGNATURES:
+        raise HTTPException(
+            status_code=400,
+            detail="E-IMZO PKCS#7 signature is required",
+        )
     if is_real_signature:
         # Реальный PKCS#7 от клиента E-IMZO; при настроенном DSV — проверяем
-        verdict = await verify_pkcs7_via_dsv(data.signature)
-        if verdict is False:
+        if not data.certificate:
+            raise HTTPException(status_code=400, detail="Сертификат подписанта обязателен")
+        verdict = await verify_pkcs7_via_dsv(data.signature, digest)
+        if verdict is not True:
             raise HTTPException(
-                status_code=400, detail="Подпись не прошла проверку E-IMZO DSV"
+                status_code=400,
+                detail="Подпись не подтверждена E-IMZO DSV и не связана с хешем договора",
             )
 
     generated_signature, generated_certificate, generated_thumbprint = stub_signature(
@@ -487,8 +513,8 @@ async def confirm_signature(
     signature = data.signature if data and data.signature else generated_signature
     certificate = data.certificate if data and data.certificate else generated_certificate
     thumbprint = (
-        data.certificate_thumbprint
-        if data and data.certificate_thumbprint
+        hashlib.sha256(certificate.encode("utf-8")).hexdigest().upper()[:40]
+        if is_real_signature
         else generated_thumbprint
     )
 
@@ -621,7 +647,7 @@ async def update_contract(
     db: AsyncSession = Depends(get_db),
 ):
     """Обновить контракт; изменение текста создаёт новую версию."""
-    contract = await get_visible_contract(contract_id, user, db)
+    contract = await get_visible_contract(contract_id, user, db, for_update=True)
 
     updates = data.model_dump(exclude_unset=True)
     changes_description = updates.pop("changes_description", None)
@@ -685,7 +711,7 @@ async def archive_contract(
     db: AsyncSession = Depends(get_db),
 ):
     """Мягкое удаление: контракт переводится в архив."""
-    contract = await get_visible_contract(contract_id, user, db)
+    contract = await get_visible_contract(contract_id, user, db, for_update=True)
     contract.status = "archived"
     await log_action(
         db,

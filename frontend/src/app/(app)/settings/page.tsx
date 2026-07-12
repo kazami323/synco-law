@@ -1,8 +1,18 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BadgeCheck, BellRing, Eye, Plus, Scale, Shield, UserCog } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  BadgeCheck,
+  BellRing,
+  Copy,
+  Eye,
+  KeyRound,
+  Plus,
+  Scale,
+  Shield,
+  UserCog,
+} from "lucide-react";
+import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
@@ -37,9 +47,10 @@ function initials(u: User) {
 }
 
 export default function SettingsPage() {
-  const { user: me } = useAuth();
+  const { user: me, refresh } = useAuth();
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   const org = useQuery({
     queryKey: ["org"],
@@ -99,7 +110,38 @@ export default function SettingsPage() {
         </div>
       </Card>
 
+      {me && <MfaCard enabled={me.mfa_enabled} onChanged={refresh} />}
+
       {/* Сотрудники — для ролей с обзором организации */}
+      {canManage && org.data && (
+        <Card className="mt-6 p-6">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2 font-semibold">
+                <KeyRound size={18} className="text-primary" />
+                Код приглашения
+              </div>
+              <div className="mt-2 font-mono text-xl tracking-wider">
+                {org.data.invite_code}
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                await navigator.clipboard.writeText(org.data.invite_code);
+                setInviteCopied(true);
+                setTimeout(() => setInviteCopied(false), 1800);
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <Copy size={16} />
+                {inviteCopied ? "Скопировано" : "Скопировать"}
+              </span>
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {canViewUsers && (
       <Card className="mt-6 overflow-hidden">
         <div className="px-6 py-4 bg-surface-container-low border-b border-outline-variant font-semibold">
@@ -247,6 +289,79 @@ export default function SettingsPage() {
   );
 }
 
+function MfaCard({
+  enabled,
+  onChanged,
+}: {
+  enabled: boolean;
+  onChanged: () => Promise<void>;
+}) {
+  const [setup, setSetup] = useState<{ secret: string; otpauth_uri: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  const begin = useMutation({
+    mutationFn: () => api<{ secret: string; otpauth_uri: string }>("/api/auth/mfa/setup", { method: "POST" }),
+    onSuccess: setSetup,
+    onError: (err) => setError(err instanceof Error ? err.message : "Не удалось настроить MFA"),
+  });
+  const enable = useMutation({
+    mutationFn: () => api("/api/auth/mfa/enable", { method: "POST", body: { code } }),
+    onSuccess: async () => {
+      setSetup(null);
+      setCode("");
+      await onChanged();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Неверный код"),
+  });
+  const disable = useMutation({
+    mutationFn: () => api("/api/auth/mfa/disable", { method: "POST", body: { password, code } }),
+    onSuccess: async () => {
+      setPassword("");
+      setCode("");
+      await onChanged();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Не удалось отключить MFA"),
+  });
+
+  return (
+    <Card className="mt-6 p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 font-semibold"><Shield size={18} className="text-primary" />Двухфакторная защита</div>
+          <p className="mt-1 text-sm text-on-surface-variant">Код из приложения-аутентификатора потребуется при каждом новом входе.</p>
+        </div>
+        <Chip tone={enabled ? "success" : "neutral"}>{enabled ? "Включена" : "Выключена"}</Chip>
+      </div>
+
+      {!enabled && !setup && (
+        <Button className="mt-4" variant="secondary" loading={begin.isPending} onClick={() => { setError(""); begin.mutate(); }}>
+          Настроить MFA
+        </Button>
+      )}
+
+      {!enabled && setup && (
+        <div className="mt-4 space-y-3 rounded-xl border border-outline-variant bg-surface-container-low p-4">
+          <p className="text-sm">Добавьте аккаунт вручную в Google Authenticator, Microsoft Authenticator или 1Password:</p>
+          <code className="block break-all rounded-lg bg-surface-container-lowest p-3 text-sm font-semibold text-primary">{setup.secret}</code>
+          <Input label="Код подтверждения" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} />
+          <Button loading={enable.isPending} disabled={code.length !== 6} onClick={() => { setError(""); enable.mutate(); }}>Подтвердить и включить</Button>
+        </div>
+      )}
+
+      {enabled && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Input label="Текущий пароль" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <Input label="Код MFA" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} />
+          <Button variant="danger" loading={disable.isPending} disabled={!password || code.length !== 6} onClick={() => { setError(""); disable.mutate(); }}>Отключить MFA</Button>
+        </div>
+      )}
+      {error && <div className="mt-3"><ErrorNote message={error} /></div>}
+    </Card>
+  );
+}
+
 interface Channels {
   email_enabled: boolean;
   telegram_enabled: boolean;
@@ -290,9 +405,6 @@ function NotificationsCard() {
 
   const c = channels.data;
   const linked = c?.telegram_linked ?? false;
-  useEffect(() => {
-    if (linked) setLinkCode(null); // привязка завершилась
-  }, [linked]);
 
   return (
     <Card className="mt-6 p-6">
@@ -493,7 +605,7 @@ function AddUserModal({ onClose }: { onClose: () => void }) {
           value={form.password}
           onChange={set("password")}
           required
-          minLength={8}
+          minLength={10}
         />
         <Select label="Роль" value={form.role} onChange={set("role")}>
           {Object.entries(ROLE_LABELS).map(([value, label]) => (

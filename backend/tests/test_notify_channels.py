@@ -31,14 +31,14 @@ async def _make_user(client, admin_headers, email, username, role):
         json={
             "email": email,
             "username": username,
-            "password": "secret123",
+            "password": "Secret1234",
             "role": role,
         },
         headers=admin_headers,
     )
     assert resp.status_code == 201, resp.text
     resp = await client.post(
-        "/api/auth/login", json={"email": email, "password": "secret123"}
+        "/api/auth/login", json={"email": email, "password": "Secret1234"}
     )
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 

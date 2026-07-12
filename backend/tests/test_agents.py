@@ -1,7 +1,10 @@
 """Тесты AI-агентов: оркестратор, анализ, чат, генерация — LLM замокан."""
 
+import uuid
+
 import pytest
 
+from app.agents.chat import AgentChatResult
 from app.utils import llm
 
 FAKE_ANALYZER = {
@@ -134,7 +137,13 @@ async def test_chat_with_agent(client, admin_headers, mock_llm):
         headers=admin_headers,
     )
     assert resp.status_code == 200, resp.text
-    assert "ГК РУз" in resp.json()["reply"]
+    reply = resp.json()["reply"]
+    assert "ГК РУз" in reply
+    assert "Примечание юриста:" in reply
+    assert (
+        "Правовое основание:" in reply
+        or "Прямое регулирование данного вопроса на Lex.uz не выявлено" in reply
+    )
 
 
 async def test_chat_with_contract_context(client, admin_headers, mock_llm):
@@ -149,6 +158,78 @@ async def test_chat_with_contract_context(client, admin_headers, mock_llm):
         headers=admin_headers,
     )
     assert resp.status_code == 200
+
+
+async def test_chat_restores_document_context_from_session(
+    client, admin_headers, mock_llm, monkeypatch
+):
+    contexts: list[tuple[str | None, str | None]] = []
+
+    async def capture_chat(
+        agent: str,
+        messages: list[dict],
+        context_document: str | None = None,
+        context_label: str | None = None,
+        db=None,
+    ) -> str:
+        contexts.append((context_document, context_label))
+        return AgentChatResult(
+            reply="Контекст получен",
+            legal_sources=[
+                {
+                    "document_title": "Гражданский кодекс",
+                    "article_number": "10",
+                    "url": "https://lex.uz/docs/test#10",
+                    "current_revision_date": "2026-01-01",
+                    "status": "active",
+                }
+            ],
+        )
+
+    monkeypatch.setattr("app.api.agents.agent_chat", capture_chat)
+    session_id = str(uuid.uuid4())
+    first = await client.post(
+        "/api/agents/chat",
+        json={
+            "agent": "risk",
+            "messages": [{"role": "user", "content": "Проанализируй документ"}],
+            "document_text": "Существенное обязательство по оплате",
+            "document_name": "agreement.pdf",
+            "session_id": session_id,
+        },
+        headers=admin_headers,
+    )
+    assert first.status_code == 200
+    assert first.json()["sources"][0]["article_number"] == "10"
+
+    second = await client.post(
+        "/api/agents/chat",
+        json={
+            "agent": "risk",
+            "messages": [{"role": "user", "content": "А какой срок?"}],
+            "session_id": session_id,
+        },
+        headers=admin_headers,
+    )
+    assert second.status_code == 200
+    assert contexts == [
+        ("Существенное обязательство по оплате", "agreement.pdf"),
+        ("Существенное обязательство по оплате", "agreement.pdf"),
+    ]
+
+    sessions = await client.get("/api/agents/sessions/", headers=admin_headers)
+    stored = next(item for item in sessions.json() if item["id"] == session_id)
+    assert "document_text" not in stored
+
+    feedback = await client.put(
+        f"/api/agents/sessions/{session_id}/messages/1/feedback",
+        json={"rating": "up"},
+        headers=admin_headers,
+    )
+    assert feedback.status_code == 204
+    sessions = await client.get("/api/agents/sessions/", headers=admin_headers)
+    stored = next(item for item in sessions.json() if item["id"] == session_id)
+    assert stored["messages"][1]["feedback"] == "up"
 
 
 async def test_chat_unknown_agent(client, admin_headers, mock_llm):
@@ -183,7 +264,88 @@ async def test_parse_file_for_chat(client, admin_headers):
         headers=admin_headers,
     )
     assert resp.status_code == 200
+    assert resp.json()["status"] == "done"
     assert resp.json()["text"] == "Текст документа для чата"
+
+
+async def test_parse_scanned_pdf_via_background_job(
+    client, admin_headers, mock_llm, monkeypatch
+):
+    """Скан без текстового слоя уходит в фоновый OCR: job_id + поллинг."""
+    import asyncio
+
+    from pypdf import PdfWriter
+
+    from app.api import agents as agents_api
+
+    async def fake_ocr(data: bytes, filename: str) -> str:
+        return "Распознанный текст скана"
+
+    monkeypatch.setattr(agents_api, "extract_pdf_text", fake_ocr)
+
+    import io
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    buf = io.BytesIO()
+    writer.write(buf)
+
+    resp = await client.post(
+        "/api/agents/parse-file",
+        files={"file": ("scan.pdf", buf.getvalue(), "application/pdf")},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "processing"
+    job_id = body["job_id"]
+
+    # Дать фоновой задаче исполниться (включая запись usage в БД)
+    for _ in range(100):
+        await asyncio.sleep(0.1)
+        status = await client.get(
+            f"/api/agents/parse-file/jobs/{job_id}", headers=admin_headers
+        )
+        assert status.status_code == 200
+        if status.json()["status"] == "done":
+            break
+    assert status.json()["status"] == "done"
+    assert status.json()["text"] == "Распознанный текст скана"
+    assert status.json()["extraction_method"] == "ocr"
+
+
+async def test_parse_job_of_other_user_is_hidden(client, admin_headers, mock_llm, monkeypatch):
+    """Чужую задачу распознавания нельзя прочитать по job_id."""
+    import io
+
+    from pypdf import PdfWriter
+
+    from app.api import agents as agents_api
+    from tests.conftest import register_and_login
+
+    async def slow_ocr(data: bytes, filename: str) -> str:
+        return "x"
+
+    monkeypatch.setattr(agents_api, "extract_pdf_text", slow_ocr)
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    buf = io.BytesIO()
+    writer.write(buf)
+    resp = await client.post(
+        "/api/agents/parse-file",
+        files={"file": ("scan.pdf", buf.getvalue(), "application/pdf")},
+        headers=admin_headers,
+    )
+    job_id = resp.json()["job_id"]
+
+    other_headers = await register_and_login(
+        client, email="other@test.uz", username="other"
+    )
+    other = await client.get(
+        f"/api/agents/parse-file/jobs/{job_id}", headers=other_headers
+    )
+    assert other.status_code == 404
 
 
 # ---------- Phase 2: Translation Agent и Compliance Agent ----------

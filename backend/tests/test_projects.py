@@ -138,14 +138,14 @@ async def test_external_cannot_create_project(client, admin_headers):
         json={
             "email": "ext@p.uz",
             "username": "extp",
-            "password": "secret123",
+            "password": "Secret1234",
             "role": "external",
         },
         headers=admin_headers,
     )
     assert resp.status_code == 201, resp.text
     resp = await client.post(
-        "/api/auth/login", json={"email": "ext@p.uz", "password": "secret123"}
+        "/api/auth/login", json={"email": "ext@p.uz", "password": "Secret1234"}
     )
     ext = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 

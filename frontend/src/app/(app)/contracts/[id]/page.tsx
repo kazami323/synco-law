@@ -4,8 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   ArrowLeft,
+  Building2,
   CalendarClock,
+  CalendarDays,
   CheckCircle2,
+  Clock,
+  Coins,
   Download,
   FileSignature,
   History,
@@ -38,7 +42,12 @@ import {
   Select,
   Spinner,
 } from "@/components/ui";
-import { RiskChip, StatusChip, TypeChip } from "@/components/contract-chips";
+import {
+  RiskChip,
+  StatusChip,
+  TypeChip,
+  TypeIcon,
+} from "@/components/contract-chips";
 import { AnalysisSection } from "@/components/analysis-section";
 import { TranslateModal } from "@/components/translate-modal";
 import { WorkflowPanel } from "@/components/workflow-panel";
@@ -219,12 +228,18 @@ export default function ContractPage() {
       </Link>
 
       <div className="flex flex-wrap items-start justify-between gap-4 mt-3">
-        <div>
-          <h1 className="text-2xl font-semibold">{c.title}</h1>
-          <div className="flex flex-wrap items-center gap-2 mt-2">
-            <TypeChip type={c.contract_type} />
-            <StatusChip status={c.status} />
-            <RiskChip score={c.risk_score} />
+        <div className="flex items-start gap-3.5">
+          <TypeIcon type={c.contract_type} size={24} className="mt-0.5 h-12 w-12 shrink-0" />
+          <div>
+            <h1 className="text-2xl font-semibold leading-tight">{c.title}</h1>
+            <div className="mt-1 text-sm text-on-surface-variant">
+              {c.counterparty ?? "Контрагент не указан"}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 mt-2.5">
+              <TypeChip type={c.contract_type} />
+              <StatusChip status={c.status} />
+              <RiskChip score={c.risk_score} />
+            </div>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -292,38 +307,48 @@ export default function ContractPage() {
         <div className="xl:col-span-2 space-y-6">
           <Card className="p-6">
             <h2 className="font-semibold mb-4">Реквизиты</h2>
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
-              <div>
-                <dt className="text-on-surface-variant">Контрагент</dt>
-                <dd className="font-medium mt-0.5">{c.counterparty ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-on-surface-variant">Сумма</dt>
-                <dd className="font-medium mt-0.5">
-                  {c.amount
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {[
+                {
+                  icon: Building2,
+                  label: "Контрагент",
+                  value: c.counterparty ?? "—",
+                },
+                {
+                  icon: Coins,
+                  label: "Сумма",
+                  value: c.amount
                     ? `${Number(c.amount).toLocaleString("ru-RU")} ${c.currency}`
-                    : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-on-surface-variant">Создан</dt>
-                <dd className="font-medium mt-0.5">
-                  {new Date(c.created_at).toLocaleString("ru-RU")}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-on-surface-variant">Обновлен</dt>
-                <dd className="font-medium mt-0.5">
-                  {new Date(c.updated_at).toLocaleString("ru-RU")}
-                </dd>
-              </div>
+                    : "—",
+                },
+                {
+                  icon: CalendarDays,
+                  label: "Создан",
+                  value: new Date(c.created_at).toLocaleString("ru-RU"),
+                },
+                {
+                  icon: Clock,
+                  label: "Обновлен",
+                  value: new Date(c.updated_at).toLocaleString("ru-RU"),
+                },
+              ].map(({ icon: Icon, label, value }) => (
+                <div key={label} className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-container-low text-on-surface-variant">
+                    <Icon size={16} />
+                  </span>
+                  <div className="min-w-0">
+                    <dt className="text-xs text-on-surface-variant">{label}</dt>
+                    <dd className="mt-0.5 text-sm font-medium break-words">{value}</dd>
+                  </div>
+                </div>
+              ))}
             </dl>
           </Card>
 
           <Card className="p-6">
             <h2 className="font-semibold mb-4">Текст контракта</h2>
             {c.content ? (
-              <pre className="whitespace-pre-wrap text-sm font-body leading-relaxed max-h-[32rem] overflow-y-auto">
+              <pre className="max-h-[32rem] overflow-y-auto whitespace-pre-wrap rounded-lg border border-outline-variant bg-surface-container-low p-5 font-body text-sm leading-relaxed">
                 {c.content}
               </pre>
             ) : (
