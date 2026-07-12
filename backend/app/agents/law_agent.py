@@ -54,11 +54,6 @@ SYSTEM = """Ты — эксперт по законодательству Рес
 class LawAgent:
     name = "law_agent"
 
-    def __init__(self, lex_uz_api_key: str | None = None):
-        # Kept for backward compatibility with the orchestrator signature. Public
-        # lex.uz HTML import does not require a key.
-        self.lex_uz_api_key = lex_uz_api_key
-
     async def check_legislation(
         self,
         contract_content: str,

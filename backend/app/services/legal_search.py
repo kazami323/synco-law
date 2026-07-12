@@ -146,6 +146,13 @@ async def search_legal_articles(
 
 
 async def reindex_all(db: AsyncSession) -> int:
+    # Индекс пересоздаём с нуля: upsert документа удаляет старые строки из БД,
+    # но их ES-записи иначе остаются призраками и дублируют выдачу агентам
+    try:
+        await get_client().indices.delete(index=INDEX, ignore=[404])
+    except Exception:
+        logger.warning("elasticsearch unavailable, skip reindex")
+        return 0
     if not await ensure_index():
         return 0
     rows = (

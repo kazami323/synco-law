@@ -47,12 +47,12 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     ANTHROPIC_MODEL: str = "claude-opus-4-8"
     ANTHROPIC_TIMEOUT_SECONDS: int = 90
-    AI_REQUESTS_PER_MINUTE: int = 10
+    # Per-user: OCR-загрузки и чат делят одно окно, 10 было впритык
+    AI_REQUESTS_PER_MINUTE: int = 20
     AI_DAILY_REQUESTS_PER_ORG: int = 500
     AI_DAILY_TOKENS_PER_ORG: int = 2_000_000
 
-    # External APIs
-    LEX_UZ_API_KEY: str = ""
+    # Правовая база: свой RAG по lex.uz (HTML-импорт, ключи не нужны)
     LEGAL_REFRESH_ENABLED: bool = False
     LEGAL_REFRESH_INTERVAL_HOURS: int = 24 * 7
     LEXUZ_CACHE_DIR: str = ".cache/lexuz"

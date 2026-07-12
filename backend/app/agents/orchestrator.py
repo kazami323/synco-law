@@ -18,9 +18,9 @@ from app.agents.translation_agent import TranslationAgent
 
 
 class ContractAnalysisOrchestrator:
-    def __init__(self, lex_uz_key: str | None = None):
+    def __init__(self):
         self.analyzer = ContractAnalyzerAgent()
-        self.law_agent = LawAgent(lex_uz_key)
+        self.law_agent = LawAgent()
         self.risk_agent = RiskAgent()
         self.draft_agent = DraftAgent()
         self.compliance_agent = ComplianceAgent()

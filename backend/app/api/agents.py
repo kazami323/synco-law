@@ -49,7 +49,7 @@ async def trigger_analysis(
         )
 
     org = await db.get(Organization, user.organization_id)
-    orchestrator = ContractAnalysisOrchestrator(settings.LEX_UZ_API_KEY)
+    orchestrator = ContractAnalysisOrchestrator()
     with collect_usage() as usage:
         report = await orchestrator.run_analysis(
             str(contract.id),

@@ -13,11 +13,12 @@ docker-compose.yml full local production-like stack
 
 ## Быстрый Старт Для Разработки
 
-Backend:
+Backend (инфраструктура поднимается корневым docker-compose — он один
+на весь проект, отдельного compose в backend/ больше нет):
 
 ```bash
-cd backend
 docker compose up -d postgres redis minio
+cd backend
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
