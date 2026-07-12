@@ -75,7 +75,8 @@ services:
     build:
       context: ../backend
     restart: unless-stopped
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    # AI jobs are polled from process memory until the queue is moved to Redis.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"
     env_file: ${DEPLOY_ENV_FILE:-.env.production}
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-legal_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-legal_workspace}

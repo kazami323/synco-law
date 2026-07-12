@@ -98,6 +98,41 @@ export async function api<T>(
   return res.json();
 }
 
+type BackgroundTaskState<T> =
+  | { status: "processing"; job_id?: string; operation?: string }
+  | { status: "done"; result: T }
+  | { status: "error"; detail: string };
+
+/**
+ * Запускает длительную AI-операцию коротким запросом и опрашивает её статус.
+ * Ни один HTTP-запрос не висит дольше нескольких секунд, поэтому Vercel и
+ * временный туннель не обрывают анализ, перевод или генерацию документа.
+ */
+export async function apiBackgroundTask<T>(
+  startPath: string,
+  options: RequestOptions = { method: "POST" },
+  deadlineMs = 15 * 60_000
+): Promise<T> {
+  const started = await api<BackgroundTaskState<T>>(startPath, options);
+  if (started.status === "done") return started.result;
+  if (started.status === "error") throw new ApiError(422, started.detail);
+  if (!started.job_id) throw new ApiError(500, "Сервер не вернул идентификатор AI-задачи");
+
+  const deadline = Date.now() + deadlineMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    const state = await api<BackgroundTaskState<T>>(
+      `/api/agents/tasks/${started.job_id}`
+    );
+    if (state.status === "done") return state.result;
+    if (state.status === "error") throw new ApiError(422, state.detail);
+  }
+  throw new ApiError(
+    0,
+    "AI-операция выполняется слишком долго. Повторите позже или обратитесь к администратору."
+  );
+}
+
 /** Скачивание файла с Bearer-токеном (CSV-экспорт и т.п.). */
 export async function apiDownload(path: string, filename: string): Promise<void> {
   const res = await fetch(`${API_URL}${path}`, { credentials: "include" });

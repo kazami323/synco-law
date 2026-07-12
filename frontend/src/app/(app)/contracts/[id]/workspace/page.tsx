@@ -12,7 +12,7 @@ import {
   ShieldAlert,
   Sparkles,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, apiBackgroundTask } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import type { ContractDetail } from "@/lib/types";
@@ -161,7 +161,8 @@ export default function WorkspacePage() {
   });
 
   const run = useMutation({
-    mutationFn: () => api(`/api/contracts/${id}/analyze`, { method: "POST" }),
+    mutationFn: () =>
+      apiBackgroundTask(`/api/contracts/${id}/analyze/jobs`, { method: "POST" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["analysis", id] });
       qc.invalidateQueries({ queryKey: ["contract", id] });

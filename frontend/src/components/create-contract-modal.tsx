@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { api, apiUpload } from "@/lib/api";
+import { api, apiBackgroundTask, apiUpload } from "@/lib/api";
 import type { ContractDetail } from "@/lib/types";
 import { Button, ErrorNote, Input, Modal } from "@/components/ui";
 
@@ -107,7 +107,7 @@ export function CreateContractModal({
       if (source === "ai") {
         if (!aiRequirements.trim())
           throw new Error("Опишите требования к договору");
-        const draft = await api<{ content: string }>("/api/agents/draft", {
+        const draft = await apiBackgroundTask<{ content: string }>("/api/agents/draft/jobs", {
           method: "POST",
           body: {
             contract_type: type,

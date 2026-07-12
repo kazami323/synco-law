@@ -257,6 +257,40 @@ async def test_draft_generation(client, admin_headers, mock_llm):
     assert "ДОГОВОР" in resp.json()["content"]
 
 
+async def test_long_ai_operation_runs_as_background_job(
+    client, admin_headers, mock_llm, monkeypatch
+):
+    """Длинный endpoint отвечает сразу, результат приходит через polling."""
+    import asyncio
+
+    from app.api import agents as agents_api
+
+    async def fake_draft(contract_type, requirements, user, db):
+        await asyncio.sleep(0.05)
+        return {"content": "Фоновый проект договора"}
+
+    monkeypatch.setattr(agents_api, "_perform_draft", fake_draft)
+    started = await client.post(
+        "/api/agents/draft/jobs",
+        json={"contract_type": "purchase", "requirements": {"предмет": "поставка"}},
+        headers=admin_headers,
+    )
+    assert started.status_code == 200
+    assert started.json()["status"] == "processing"
+
+    job_id = started.json()["job_id"]
+    for _ in range(50):
+        await asyncio.sleep(0.05)
+        status = await client.get(f"/api/agents/tasks/{job_id}", headers=admin_headers)
+        assert status.status_code == 200
+        if status.json()["status"] == "done":
+            break
+    assert status.json() == {
+        "status": "done",
+        "result": {"content": "Фоновый проект договора"},
+    }
+
+
 async def test_parse_file_for_chat(client, admin_headers):
     resp = await client.post(
         "/api/agents/parse-file",
@@ -315,13 +349,13 @@ async def test_parse_scanned_pdf_via_background_job(
 
 
 def test_pdf_chunks_split_and_limits():
-    """Нарезка PDF для OCR: по 10 страниц, с потолком в 150 страниц."""
+    """Нарезка PDF для OCR: короткими кусками, с потолком страниц."""
     import io
 
     import pytest
     from pypdf import PdfWriter
 
-    from app.utils.llm import OCR_MAX_PAGES, _pdf_chunks
+    from app.utils.llm import OCR_CHUNK_PAGES, OCR_MAX_PAGES, _pdf_chunks
 
     def make_pdf(pages: int) -> bytes:
         writer = PdfWriter()
@@ -332,7 +366,11 @@ def test_pdf_chunks_split_and_limits():
         return buffer.getvalue()
 
     chunks = _pdf_chunks(make_pdf(25))
-    assert [label for label, _ in chunks] == ["стр. 1-10", "стр. 11-20", "стр. 21-25"]
+    expected = [
+        f"стр. {start + 1}-{min(start + OCR_CHUNK_PAGES, 25)}"
+        for start in range(0, 25, OCR_CHUNK_PAGES)
+    ]
+    assert [label for label, _ in chunks] == expected
 
     with pytest.raises(ValueError, match="Разбейте файл"):
         _pdf_chunks(make_pdf(OCR_MAX_PAGES + 1))

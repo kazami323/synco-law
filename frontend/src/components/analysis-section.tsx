@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BadgeCheck, Gavel, ListChecks, ShieldAlert, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { api, apiBackgroundTask } from "@/lib/api";
 import { Button, Card, Chip, ErrorNote } from "@/components/ui";
 
 interface AnalyzerResult {
@@ -89,7 +89,9 @@ export function AnalysisSection({
 
   const run = useMutation({
     mutationFn: () =>
-      api(`/api/contracts/${contractId}/analyze`, { method: "POST" }),
+      apiBackgroundTask(`/api/contracts/${contractId}/analyze/jobs`, {
+        method: "POST",
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["analysis", contractId] });
       qc.invalidateQueries({ queryKey: ["contract", contractId] });

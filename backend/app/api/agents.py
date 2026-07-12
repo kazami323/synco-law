@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import time
 import uuid
 from typing import Literal
@@ -10,7 +11,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.contracts import get_visible_contract
 from app.core.config import settings
@@ -35,6 +36,14 @@ from app.utils.llm import (
 from app.utils.upload_security import UploadSecurityError, secure_upload
 
 router = APIRouter(prefix="/api", tags=["ai-agents"])
+logger = logging.getLogger("app.ai_agents")
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_background(coro) -> None:
+    task = asyncio.create_task(coro)
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
 # ---------- Анализ контракта ----------
@@ -50,6 +59,21 @@ async def trigger_analysis(
     у организации заданы внутренние политики)."""
     require_api_key()
     await enforce_ai_access(db, user)
+    return await _perform_contract_analysis(
+        contract_id,
+        user,
+        db,
+        ip_address=request.client.host if request.client else None,
+    )
+
+
+async def _perform_contract_analysis(
+    contract_id: uuid.UUID,
+    user: User,
+    db: AsyncSession,
+    *,
+    ip_address: str | None = None,
+):
     contract = await get_visible_contract(contract_id, user, db)
     if not contract.content:
         raise HTTPException(
@@ -89,7 +113,7 @@ async def trigger_analysis(
         resource_type="contract",
         resource_id=contract.id,
         changes={"risk_score": contract.risk_score},
-        ip_address=request.client.host if request.client else None,
+        ip_address=ip_address,
     )
     await db.commit()
     await search_service.index_contract(contract)
@@ -364,13 +388,19 @@ def _cleanup_parse_jobs() -> None:
         _PARSE_JOBS.pop(job_id, None)
 
 
-async def _run_ocr_job(job_id: str, user_id: uuid.UUID, data: bytes, filename: str) -> None:
+async def _run_ocr_job(
+    job_id: str,
+    user_id: uuid.UUID,
+    data: bytes,
+    filename: str,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
     job = _PARSE_JOBS.get(job_id)
     try:
         with collect_usage() as usage:
             text = await extract_pdf_text(data, filename)
         # Запрос уже завершён — расход токенов пишем отдельной сессией
-        async with async_session_factory() as db:
+        async with session_factory() as db:
             job_user = await db.get(User, user_id)
             if job_user is not None:
                 record_ai_usage(
@@ -426,7 +456,12 @@ async def parse_document_for_chat(
         "filename": filename,
         "status": "processing",
     }
-    asyncio.create_task(_run_ocr_job(job_id, user.id, data, filename))
+    if db.bind is None:
+        raise HTTPException(status_code=503, detail="База данных временно недоступна")
+    session_factory = async_sessionmaker(db.bind, expire_on_commit=False)
+    _spawn_background(
+        _run_ocr_job(job_id, user.id, data, filename, session_factory)
+    )
     return {"status": "processing", "job_id": job_id, "filename": filename}
 
 
@@ -471,6 +506,15 @@ async def translate_contract(
     """Юридический перевод контракта (Translation Agent, Phase 2)."""
     require_api_key()
     await enforce_ai_access(db, user)
+    return await _perform_translation(contract_id, data.target_lang, user, db)
+
+
+async def _perform_translation(
+    contract_id: uuid.UUID,
+    target_lang: str,
+    user: User,
+    db: AsyncSession,
+):
     contract = await get_visible_contract(contract_id, user, db)
     if not contract.content:
         raise HTTPException(status_code=400, detail="У контракта нет текста")
@@ -479,7 +523,7 @@ async def translate_contract(
     try:
         with collect_usage() as usage:
             translated = await orchestrator.translation_agent.translate(
-                contract.content, data.target_lang
+                contract.content, target_lang
             )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -488,13 +532,13 @@ async def translate_contract(
         AgentResult(
             contract_id=contract.id,
             agent_name="translation_agent",
-            result_type=f"translation_{data.target_lang}",
-            result_data={"target_lang": data.target_lang, "content": translated},
+            result_type=f"translation_{target_lang}",
+            result_data={"target_lang": target_lang, "content": translated},
         )
     )
     record_ai_usage(db, user, usage, endpoint="contract_translation", agent="translator")
     await db.commit()
-    return {"target_lang": data.target_lang, "content": translated}
+    return {"target_lang": target_lang, "content": translated}
 
 
 # ---------- Генерация черновика ----------
@@ -513,11 +557,188 @@ async def generate_draft(
     """Сгенерировать текст договора по требованиям (Draft Agent)."""
     require_api_key()
     await enforce_ai_access(db, user)
+    return await _perform_draft(data.contract_type, data.requirements, user, db)
+
+
+async def _perform_draft(
+    contract_type: str,
+    requirements: dict,
+    user: User,
+    db: AsyncSession,
+):
     orchestrator = ContractAnalysisOrchestrator()
     with collect_usage() as usage:
         content = await orchestrator.draft_agent.create_contract(
-            data.contract_type, data.requirements
+            contract_type, requirements
         )
     record_ai_usage(db, user, usage, endpoint="draft_generation", agent="draft")
     await db.commit()
     return {"content": content}
+
+
+# ---------- Фоновые длительные AI-операции ----------
+
+_AI_JOBS: dict[str, dict] = {}
+_AI_JOB_TTL_SECONDS = 60 * 60
+
+
+def _cleanup_ai_jobs() -> None:
+    now = time.monotonic()
+    for job_id in [
+        key
+        for key, job in _AI_JOBS.items()
+        if now - job["created"] > _AI_JOB_TTL_SECONDS
+    ]:
+        _AI_JOBS.pop(job_id, None)
+
+
+def _start_ai_job(
+    user: User,
+    operation: str,
+    payload: dict,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> str:
+    _cleanup_ai_jobs()
+    job_id = uuid.uuid4().hex
+    _AI_JOBS[job_id] = {
+        "created": time.monotonic(),
+        "user_id": str(user.id),
+        "operation": operation,
+        "status": "processing",
+    }
+    _spawn_background(
+        _run_ai_job(job_id, user.id, operation, payload, session_factory)
+    )
+    return job_id
+
+
+async def _run_ai_job(
+    job_id: str,
+    user_id: uuid.UUID,
+    operation: str,
+    payload: dict,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    job = _AI_JOBS.get(job_id)
+    try:
+        async with session_factory() as db:
+            user = await db.get(User, user_id)
+            if user is None or not user.is_active:
+                raise ValueError("Пользователь не найден или отключён")
+            if operation == "analysis":
+                result = await _perform_contract_analysis(
+                    uuid.UUID(payload["contract_id"]),
+                    user,
+                    db,
+                    ip_address=payload.get("ip_address"),
+                )
+            elif operation == "translation":
+                result = await _perform_translation(
+                    uuid.UUID(payload["contract_id"]),
+                    payload["target_lang"],
+                    user,
+                    db,
+                )
+            elif operation == "draft":
+                result = await _perform_draft(
+                    payload["contract_type"],
+                    payload["requirements"],
+                    user,
+                    db,
+                )
+            else:
+                raise ValueError("Неизвестная AI-операция")
+        if job is not None:
+            job.update(status="done", result=result)
+    except Exception as exc:
+        logger.exception("Background AI job %s (%s) failed", job_id, operation)
+        if job is not None:
+            detail = getattr(exc, "detail", None) or str(exc) or "AI-операция завершилась с ошибкой"
+            job.update(status="error", detail=str(detail)[:500])
+
+
+@router.post("/contracts/{contract_id}/analyze/jobs")
+async def start_analysis_job(
+    contract_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    require_api_key()
+    await enforce_ai_access(db, user)
+    contract = await get_visible_contract(contract_id, user, db)
+    if not contract.content:
+        raise HTTPException(status_code=400, detail="У контракта нет текста для анализа")
+    if db.bind is None:
+        raise HTTPException(status_code=503, detail="База данных временно недоступна")
+    job_id = _start_ai_job(
+        user,
+        "analysis",
+        {
+            "contract_id": str(contract_id),
+            "ip_address": request.client.host if request.client else None,
+        },
+        async_sessionmaker(db.bind, expire_on_commit=False),
+    )
+    return {"status": "processing", "job_id": job_id}
+
+
+@router.post("/contracts/{contract_id}/translate/jobs")
+async def start_translation_job(
+    contract_id: uuid.UUID,
+    data: TranslateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_api_key()
+    await enforce_ai_access(db, user)
+    contract = await get_visible_contract(contract_id, user, db)
+    if not contract.content:
+        raise HTTPException(status_code=400, detail="У контракта нет текста")
+    if db.bind is None:
+        raise HTTPException(status_code=503, detail="База данных временно недоступна")
+    job_id = _start_ai_job(
+        user,
+        "translation",
+        {"contract_id": str(contract_id), "target_lang": data.target_lang},
+        async_sessionmaker(db.bind, expire_on_commit=False),
+    )
+    return {"status": "processing", "job_id": job_id}
+
+
+@router.post("/agents/draft/jobs")
+async def start_draft_job(
+    data: DraftRequest,
+    user: User = Depends(require_permission("create")),
+    db: AsyncSession = Depends(get_db),
+):
+    require_api_key()
+    await enforce_ai_access(db, user)
+    if db.bind is None:
+        raise HTTPException(status_code=503, detail="База данных временно недоступна")
+    job_id = _start_ai_job(
+        user,
+        "draft",
+        {"contract_type": data.contract_type, "requirements": data.requirements},
+        async_sessionmaker(db.bind, expire_on_commit=False),
+    )
+    return {"status": "processing", "job_id": job_id}
+
+
+@router.get("/agents/tasks/{job_id}")
+async def ai_job_status(
+    job_id: str,
+    user: User = Depends(get_current_user),
+):
+    _cleanup_ai_jobs()
+    job = _AI_JOBS.get(job_id)
+    if job is None or job.get("user_id") != str(user.id):
+        raise HTTPException(
+            status_code=404,
+            detail="AI-задача не найдена (возможно, сервер перезапускался). Запустите операцию ещё раз.",
+        )
+    if job["status"] == "done":
+        return {"status": "done", "result": job["result"]}
+    if job["status"] == "error":
+        return {"status": "error", "detail": job["detail"]}
+    return {"status": "processing", "operation": job["operation"]}

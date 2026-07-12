@@ -18,6 +18,7 @@ backend/backups/
 backend/.cache/
 logs/
 frontend/logs/
+backend/uvicorn.*.log
 tools/cloudflared.exe
 
 # IDE

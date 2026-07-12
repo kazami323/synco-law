@@ -10,7 +10,13 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 
-from anthropic import AsyncAnthropic
+from anthropic import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncAnthropic,
+    RateLimitError,
+)
 from fastapi import HTTPException
 from pypdf import PdfReader, PdfWriter
 
@@ -64,10 +70,11 @@ def require_api_key() -> None:
 # OCR сканов: у Claude API лимиты на PDF (100 страниц, ~32 МБ запроса),
 # а один вызов на весь скан ещё и упирается в таймаут. Поэтому режем PDF
 # на куски и распознаём их параллельно.
-OCR_CHUNK_PAGES = 10
+OCR_CHUNK_PAGES = 6
 OCR_MAX_PAGES = 150
 OCR_MAX_CHUNK_BYTES = 25 * 1024 * 1024  # base64 раздувает на треть, лимит API 32 МБ
-OCR_PARALLEL = 5
+OCR_PARALLEL = 4
+OCR_ATTEMPTS = 2  # повтор куска при сбое сети/таймауте
 
 OCR_SYSTEM = (
     "Ты выполняешь точное OCR-распознавание юридических документов. "
@@ -75,6 +82,53 @@ OCR_SYSTEM = (
     "Сохраняй заголовки, нумерацию, реквизиты и таблицы. "
     "Не додумывай неразборчивые фрагменты: отмечай их как [неразборчиво]."
 )
+
+
+def _retryable_anthropic_error(exc: Exception) -> bool:
+    if isinstance(exc, (APIConnectionError, APITimeoutError, RateLimitError)):
+        return True
+    return isinstance(exc, APIStatusError) and exc.status_code >= 500
+
+
+async def _stream_to_completion(
+    *,
+    system: str,
+    messages: list[dict],
+    max_tokens: int,
+    attempts: int,
+) -> tuple[str, object]:
+    """Collect a streamed Claude response, retrying only transient failures."""
+    client = get_anthropic_client()
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            parts: list[str] = []
+            async with client.messages.stream(
+                model=settings.ANTHROPIC_MODEL,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                timeout=max(settings.ANTHROPIC_TIMEOUT_SECONDS, 600),
+            ) as stream:
+                async for text in stream.text_stream:
+                    parts.append(text)
+                final = await stream.get_final_message()
+            return "".join(parts), final
+        except Exception as exc:
+            last_error = exc
+            if not _retryable_anthropic_error(exc) or attempt + 1 >= attempts:
+                raise
+            delay = min(2 ** attempt * 2, 10)
+            logger.warning(
+                "Transient Anthropic error, retry %s/%s in %ss: %s",
+                attempt + 2,
+                attempts,
+                delay,
+                type(exc).__name__,
+            )
+            await asyncio.sleep(delay)
+    assert last_error is not None
+    raise last_error
 
 
 def _pdf_slice(reader: PdfReader, start: int, stop: int) -> bytes:
@@ -115,33 +169,32 @@ def _pdf_chunks(pdf_data: bytes) -> list[tuple[str, bytes]]:
 
 
 async def _ocr_chunk(label: str, data: bytes, filename: str) -> str:
-    client = get_anthropic_client()
-    try:
-        response = await client.messages.create(
-            model=settings.ANTHROPIC_MODEL,
-            max_tokens=16_000,
-            system=OCR_SYSTEM,
-            messages=[
+    messages = [
+        {
+            "role": "user",
+            "content": [
                 {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "document",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "application/pdf",
-                                "data": base64.b64encode(data).decode("ascii"),
-                            },
-                            "title": f"{filename[:200]} ({label})",
-                        },
-                        {
-                            "type": "text",
-                            "text": "Распознай весь текст этого PDF-документа.",
-                        },
-                    ],
-                }
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": base64.b64encode(data).decode("ascii"),
+                    },
+                    "title": f"{filename[:200]} ({label})",
+                },
+                {
+                    "type": "text",
+                    "text": "Распознай весь текст этого PDF-документа.",
+                },
             ],
-            timeout=max(settings.ANTHROPIC_TIMEOUT_SECONDS, 180),
+        }
+    ]
+    try:
+        text, response = await _stream_to_completion(
+            system=OCR_SYSTEM,
+            messages=messages,
+            max_tokens=16_000,
+            attempts=OCR_ATTEMPTS,
         )
     except Exception as exc:
         # Настоящая причина — в лог; пользователю — компактная суть
@@ -152,9 +205,7 @@ async def _ocr_chunk(label: str, data: bytes, filename: str) -> str:
     if collector is not None:
         collector.input_tokens += int(getattr(response.usage, "input_tokens", 0) or 0)
         collector.output_tokens += int(getattr(response.usage, "output_tokens", 0) or 0)
-    return "".join(
-        block.text for block in response.content if block.type == "text"
-    ).strip()
+    return text.strip()
 
 
 async def extract_pdf_text(pdf_data: bytes, filename: str) -> str:
@@ -194,15 +245,28 @@ async def llm_text_stream(
     контекста запроса, поэтому расход токенов пишется в явно переданный usage.
     """
     client = get_anthropic_client()
-    async with client.messages.stream(
-        model=settings.ANTHROPIC_MODEL,
-        max_tokens=max_tokens,
-        system=system,
-        messages=messages,
-    ) as stream:
-        async for text in stream.text_stream:
-            yield text
-        final = await stream.get_final_message()
+    final = None
+    for attempt in range(3):
+        emitted = False
+        try:
+            async with client.messages.stream(
+                model=settings.ANTHROPIC_MODEL,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                timeout=max(settings.ANTHROPIC_TIMEOUT_SECONDS, 600),
+            ) as stream:
+                async for text in stream.text_stream:
+                    emitted = True
+                    yield text
+                final = await stream.get_final_message()
+            break
+        except Exception as exc:
+            if emitted or not _retryable_anthropic_error(exc) or attempt >= 2:
+                raise
+            await asyncio.sleep(min(2 ** attempt * 2, 10))
+    if final is None:
+        raise RuntimeError("Anthropic stream finished without a final message")
     if usage is not None:
         usage.input_tokens += int(getattr(final.usage, "input_tokens", 0) or 0)
         usage.output_tokens += int(getattr(final.usage, "output_tokens", 0) or 0)
@@ -215,20 +279,17 @@ async def llm_text(
     max_tokens: int = 4000,
 ) -> str:
     """Обычный текстовый ответ модели."""
-    client = get_anthropic_client()
-    response = await client.messages.create(
-        model=settings.ANTHROPIC_MODEL,
-        max_tokens=max_tokens,
+    text, response = await _stream_to_completion(
         system=system,
         messages=messages,
+        max_tokens=max_tokens,
+        attempts=3,
     )
     collector = _usage_collector.get()
     if collector is not None:
         collector.input_tokens += int(getattr(response.usage, "input_tokens", 0) or 0)
         collector.output_tokens += int(getattr(response.usage, "output_tokens", 0) or 0)
-    return "".join(
-        block.text for block in response.content if block.type == "text"
-    )
+    return text
 
 
 def extract_json(text: str) -> dict:

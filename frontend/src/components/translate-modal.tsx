@@ -3,7 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { Check, Copy, Languages } from "lucide-react";
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { apiBackgroundTask } from "@/lib/api";
 import { Button, ErrorNote, Modal, Select } from "@/components/ui";
 
 const LANGS = [
@@ -27,7 +27,7 @@ export function TranslateModal({
 
   const translate = useMutation({
     mutationFn: () =>
-      api<{ content: string }>(`/api/contracts/${contractId}/translate`, {
+      apiBackgroundTask<{ content: string }>(`/api/contracts/${contractId}/translate/jobs`, {
         method: "POST",
         body: { target_lang: lang },
       }),
