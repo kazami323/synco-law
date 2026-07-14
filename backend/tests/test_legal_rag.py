@@ -38,6 +38,22 @@ def test_parse_lexuz_html_splits_articles():
     assert "надлежащим образом" in parsed.articles[0].content
 
 
+def test_parse_lexuz_html_preserves_superscript_article_number():
+    html = SAMPLE_LEXUZ_HTML.replace(
+        "Статья 2. Ответственность",
+        "Статья 66<sup>1</sup>. Освобождение от ответственности",
+    )
+    parsed = parse_lexuz_html(
+        html,
+        url="https://lex.uz/ru/docs/999",
+        title="Test Act",
+        doc_type="code",
+    )
+
+    assert parsed.articles[1].article_number == "66-1"
+    assert parsed.articles[1].title.startswith("Статья 66-1.")
+
+
 async def _seed_law(session):
     document = LegalDocument(
         source="lex.uz",
@@ -69,6 +85,53 @@ async def _seed_law(session):
     await session.commit()
 
 
+async def _seed_criminal_code(session):
+    document = LegalDocument(
+        source="lex.uz",
+        source_id="111457",
+        language="ru",
+        jurisdiction="Uzbekistan",
+        doc_type="code",
+        title="Уголовный кодекс Республики Узбекистан",
+        url="https://lex.uz/ru/docs/111457",
+        status="active",
+    )
+    session.add(document)
+    await session.flush()
+    session.add_all(
+        [
+            LegalArticle(
+                document_id=document.id,
+                source_article_id="1723524",
+                article_number="66",
+                title=(
+                    "Статья 66. Освобождение от ответственности в связи с "
+                    "деятельным раскаянием виновного в содеянном"
+                ),
+                content=(
+                    "Статья 66. Освобождение от ответственности в связи с "
+                    "деятельным раскаянием виновного в содеянном. Лицо, впервые "
+                    "совершившее преступление, может быть освобождено от ответственности."
+                ),
+                content_hash="criminal-66",
+                position=66,
+                url="https://lex.uz/ru/docs/111457#1723524",
+            ),
+            LegalArticle(
+                document_id=document.id,
+                source_article_id="1723525",
+                article_number="67",
+                title="Статья 67. Освобождение от ответственности",
+                content="Статья 67. Другая норма уголовного закона.",
+                content_hash="criminal-67",
+                position=67,
+                url="https://lex.uz/ru/docs/111457#1723525",
+            ),
+        ]
+    )
+    await session.commit()
+
+
 @pytest.fixture(autouse=True)
 def no_legal_elasticsearch(monkeypatch):
     async def unavailable(**kwargs):
@@ -90,6 +153,26 @@ async def test_legal_search_sql_fallback(db_factory):
     assert results[0]["engine"] == "sql"
     assert results[0]["article_number"] == "21"
     assert "lex.uz/ru/docs/10872#10977" in results[0]["url"]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "о чем гласит 66 статья УКРУз?",
+        "Что предусматривает ст. 66 УК РУз?",
+        "Покажи статью 66 Уголовного кодекса Республики Узбекистан",
+    ],
+)
+async def test_legal_search_resolves_exact_code_article(db_factory, query):
+    async with db_factory() as session:
+        await _seed_criminal_code(session)
+        results = await legal_search.search_legal_articles(session, q=query, limit=8)
+
+    assert len(results) == 1
+    assert results[0]["engine"] == "sql_exact"
+    assert results[0]["document_title"] == "Уголовный кодекс Республики Узбекистан"
+    assert results[0]["article_number"] == "66"
+    assert results[0]["url"] == "https://lex.uz/ru/docs/111457#1723524"
 
 
 async def test_law_agent_uses_local_lexuz_context(db_factory, monkeypatch):

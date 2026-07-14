@@ -80,6 +80,46 @@ STOPWORDS = {
     "что",
 }
 
+ACT_REFERENCE_PATTERNS = (
+    (
+        re.compile(
+            r"\b(?:ук\s*(?:руз|республики\s+узбекистан)?|"
+            r"уголовн\w*\s+кодекс\w*)\b",
+            re.IGNORECASE,
+        ),
+        "Уголовный кодекс",
+    ),
+    (
+        re.compile(
+            r"\b(?:гк\s*(?:руз|республики\s+узбекистан)?|"
+            r"гражданск\w*\s+кодекс\w*)\b",
+            re.IGNORECASE,
+        ),
+        "Гражданский кодекс",
+    ),
+    (
+        re.compile(
+            r"\b(?:тк\s*(?:руз|республики\s+узбекистан)?|"
+            r"трудов\w*\s+кодекс\w*)\b",
+            re.IGNORECASE,
+        ),
+        "Трудовой кодекс",
+    ),
+    (
+        re.compile(
+            r"\b(?:нк\s*(?:руз|республики\s+узбекистан)?|"
+            r"налогов\w*\s+кодекс\w*)\b",
+            re.IGNORECASE,
+        ),
+        "Налоговый кодекс",
+    ),
+)
+
+ARTICLE_REFERENCE_PATTERNS = (
+    re.compile(r"(?:стать\w*|ст\.)\s*№?\s*(\d+(?:[-–—]\d+)?)", re.IGNORECASE),
+    re.compile(r"\b(\d+(?:[-–—]\d+)?)\s+(?:стать\w*|ст\.)", re.IGNORECASE),
+)
+
 
 async def ensure_index() -> bool:
     try:
@@ -123,6 +163,20 @@ async def search_legal_articles(
     q = (q or "").strip()
     if not q:
         return []
+
+    reference = _parse_legal_reference(q)
+    if reference:
+        exact = await _search_exact_reference(
+            db,
+            document_title=reference[0],
+            article_number=reference[1],
+            language=language,
+            source_ids=source_ids,
+            doc_types=doc_types,
+        )
+        if exact:
+            return exact[:limit]
+
     try:
         results = await _search_es(
             q=q,
@@ -143,6 +197,39 @@ async def search_legal_articles(
         source_ids=source_ids,
         doc_types=doc_types,
     )
+
+
+async def _search_exact_reference(
+    db: AsyncSession,
+    *,
+    document_title: str,
+    article_number: str,
+    language: str,
+    source_ids: list[str] | None,
+    doc_types: list[str] | None,
+) -> list[dict[str, Any]]:
+    query = (
+        select(LegalArticle)
+        .options(selectinload(LegalArticle.document))
+        .join(LegalArticle.document)
+        .where(
+            LegalDocument.language == language,
+            LegalDocument.status == "active",
+            LegalDocument.title.ilike(f"%{document_title}%"),
+            LegalArticle.article_number == article_number,
+        )
+        .order_by(LegalArticle.position)
+    )
+    if source_ids:
+        query = query.where(LegalDocument.source_id.in_(source_ids))
+    if doc_types:
+        query = query.where(LegalDocument.doc_type.in_(doc_types))
+
+    articles = (await db.execute(query)).scalars().unique()
+    results = [_serialize_sql(article, [f"статья {article_number}"]) for article in articles]
+    for result in results:
+        result["engine"] = "sql_exact"
+    return results
 
 
 async def reindex_all(db: AsyncSession) -> int:
@@ -377,6 +464,22 @@ def _query_terms(q: str) -> list[str]:
     raw_terms = re.findall(r"[A-Za-zА-Яа-яЁёЎўҚқҒғҲҳ0-9]{4,}", q.lower())
     counts = Counter(term for term in raw_terms if term not in STOPWORDS)
     return [term for term, _ in counts.most_common(12)]
+
+
+def _parse_legal_reference(q: str) -> tuple[str, str] | None:
+    document_title = next(
+        (title for pattern, title in ACT_REFERENCE_PATTERNS if pattern.search(q)),
+        None,
+    )
+    if document_title is None:
+        return None
+
+    for pattern in ARTICLE_REFERENCE_PATTERNS:
+        match = pattern.search(q)
+        if match:
+            article_number = re.sub(r"[-–—]", "-", match.group(1))
+            return document_title, article_number
+    return None
 
 
 def _sql_score(article: LegalArticle, terms: list[str]) -> int:

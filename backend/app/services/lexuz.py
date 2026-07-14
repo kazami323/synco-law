@@ -349,6 +349,14 @@ def match_article_heading(text: str) -> tuple[str | None, str] | None:
 def html_fragment_to_text(fragment: str) -> str:
     fragment = re.sub(r"<script.*?</script>", " ", fragment, flags=re.DOTALL)
     fragment = re.sub(r"<style.*?</style>", " ", fragment, flags=re.DOTALL)
+    # Lex.uz marks inserted articles as 66<sup>1</sup>. Preserve that suffix
+    # as 66-1 so exact article lookup does not confuse it with article 66.
+    fragment = re.sub(
+        r"<sup[^>]*>\s*([^<]+?)\s*</sup>",
+        lambda match: f"-{match.group(1).strip()}",
+        fragment,
+        flags=re.IGNORECASE,
+    )
     fragment = BLOCK_TAG_RE.sub("\n", fragment)
     text = TAG_RE.sub(" ", fragment)
     text = html.unescape(text)
