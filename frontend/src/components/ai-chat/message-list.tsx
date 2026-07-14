@@ -21,6 +21,10 @@ export interface ChatSource {
   url?: string | null;
   current_revision_date?: string | null;
   status?: string | null;
+  reference_status?: string | null;
+  repealed_at?: string | null;
+  repeal_law_url?: string | null;
+  historical_revision_date?: string | null;
 }
 
 interface MessageListProps {
@@ -177,7 +181,11 @@ function AssistantMessage({
                     </span>
                     <span className="mt-0.5 block text-[11px] text-on-surface-variant">
                       {source.article_number ? `Статья ${source.article_number}` : "Фрагмент"}
-                      {source.current_revision_date ? ` · редакция ${source.current_revision_date}` : ""}
+                      {source.reference_status === "repealed"
+                        ? ` · утратила силу${source.repealed_at ? ` ${source.repealed_at}` : ""}`
+                        : source.current_revision_date
+                          ? ` · редакция ${source.current_revision_date}`
+                          : ""}
                     </span>
                   </span>
                   <ExternalLink size={13} className="mt-0.5 shrink-0 text-primary" />

@@ -15,7 +15,7 @@ from pathlib import Path
 from app.db.base import async_session_factory
 from app.services import legal_search
 from app.services.legal_ingest import upsert_legal_document
-from app.services.lexuz import fetch_lexuz_html, parse_lexuz_html
+from app.services.lexuz import fetch_lexuz_html, load_historical_articles, parse_lexuz_html
 from app.services.search import get_client
 
 DEFAULT_MANIFEST = (
@@ -67,6 +67,12 @@ async def ingest_source(session, source: dict, args: argparse.Namespace) -> tupl
         adopted_at=source.get("adopted_at"),
         effective_at=source.get("effective_at"),
     )
+    if source.get("historical_sources"):
+        parsed.metadata["historical_articles"] = await load_historical_articles(
+            source["historical_sources"],
+            cache_dir=args.cache_dir,
+            refresh=args.refresh,
+        )
     result = await upsert_legal_document(session, parsed)
     await session.commit()
     action = "created" if result.created else "updated"

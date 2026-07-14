@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.services import legal_search
 from app.services.legal_ingest import upsert_legal_document
-from app.services.lexuz import fetch_lexuz_html, parse_lexuz_html
+from app.services.lexuz import fetch_lexuz_html, load_historical_articles, parse_lexuz_html
 
 logger = logging.getLogger("app.legal_refresh")
 
@@ -56,6 +56,12 @@ async def refresh_legal_sources(
             adopted_at=source.get("adopted_at"),
             effective_at=source.get("effective_at"),
         )
+        if source.get("historical_sources"):
+            parsed.metadata["historical_articles"] = await load_historical_articles(
+                source["historical_sources"],
+                cache_dir=cache_dir or settings.LEXUZ_CACHE_DIR,
+                refresh=refresh_html,
+            )
         result = await upsert_legal_document(db, parsed)
         await db.commit()
         documents += 1

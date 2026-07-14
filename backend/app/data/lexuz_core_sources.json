@@ -4,7 +4,17 @@
     "title": "Гражданский кодекс Республики Узбекистан (часть первая)",
     "doc_type": "code",
     "language": "ru",
-    "url": "https://lex.uz/ru/docs/111181"
+    "url": "https://lex.uz/ru/docs/111181",
+    "historical_sources": [
+      {
+        "url": "https://lex.uz/ru/docs/111181?ONDATE=01.03.1997%2000",
+        "language": "ru",
+        "article_numbers": ["65", "66"],
+        "repealed_at": "2014-05-15",
+        "repeal_notice": "Статьи 65 и 66 утратили силу в соответствии с Законом Республики Узбекистан от 14 мая 2014 года № ЗРУ-372.",
+        "repeal_law_url": "https://lex.uz/ru/docs/2388209"
+      }
+    ]
   },
   {
     "key": "civil_code_part_2",

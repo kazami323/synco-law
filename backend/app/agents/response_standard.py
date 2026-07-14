@@ -36,10 +36,31 @@ def legal_basis_lines(sources: list[dict[str, Any]], *, limit: int = 3) -> list[
         adopted_at = source.get("adopted_at")
         revision = source.get("current_revision_date")
         status = source.get("status")
+        reference_status = source.get("reference_status")
+        repealed_at = source.get("repealed_at")
+        repeal_law_url = source.get("repeal_law_url")
+        repeal_notice = source.get("repeal_notice")
+        historical_revision = source.get("historical_revision_date")
 
         subject = f"статья {article}" if article else "фрагмент"
         number_part = f", № {number}" if number else ""
         date_part = f" от {adopted_at}" if adopted_at else ""
+        if reference_status == "repealed":
+            line = (
+                f"Историческая редакция: {subject} НПА Республики Узбекистан "
+                f"«{title}»{number_part}{date_part} — Lex.uz: {url}. "
+                "Норма утратила силу и не является действующим правовым основанием."
+            )
+            if historical_revision:
+                line += f" Текст приведён по редакции на {historical_revision}."
+            if repealed_at:
+                line += f" Не действует с {repealed_at}."
+            if repeal_notice:
+                line += f" {repeal_notice}"
+            if repeal_law_url:
+                line += f" Акт об отмене — Lex.uz: {repeal_law_url}."
+            lines.append(line)
+            continue
         line = (
             f"Правовое основание: {subject} НПА Республики Узбекистан "
             f"«{title}»{number_part}{date_part} — Lex.uz: {url}."
@@ -103,6 +124,11 @@ def legal_basis_payload(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "url": source.get("url"),
             "current_revision_date": source.get("current_revision_date"),
             "status": source.get("status"),
+            "reference_status": source.get("reference_status"),
+            "repealed_at": source.get("repealed_at"),
+            "repeal_law_url": source.get("repeal_law_url"),
+            "repeal_notice": source.get("repeal_notice"),
+            "historical_revision_date": source.get("historical_revision_date"),
         }
         for line, source in zip(legal_basis_lines(sources, limit=10), sources)
     ]

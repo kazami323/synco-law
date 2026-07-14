@@ -1,6 +1,7 @@
 import pytest
 
 from app.agents.law_agent import LawAgent
+from app.agents.response_standard import legal_basis_lines
 from app.db.models import LegalArticle, LegalDocument
 from app.services import legal_search
 from app.services.lexuz import parse_lexuz_html
@@ -132,6 +133,58 @@ async def _seed_criminal_code(session):
     await session.commit()
 
 
+async def _seed_civil_code_with_repealed_article(session):
+    document = LegalDocument(
+        source="lex.uz",
+        source_id="111181",
+        language="ru",
+        jurisdiction="Uzbekistan",
+        doc_type="code",
+        title="Гражданский кодекс Республики Узбекистан (часть первая)",
+        url="https://lex.uz/ru/docs/111181",
+        status="active",
+        extra_data={
+            "historical_articles": [
+                {
+                    "article_number": "66",
+                    "article_title": "Статья 66. Закрытое акционерное общество",
+                    "content": (
+                        "Статья 66. Закрытое акционерное общество. "
+                        "Акции такого общества распределялись среди учредителей."
+                    ),
+                    "url": (
+                        "https://lex.uz/ru/docs/111181?"
+                        "ONDATE=01.03.1997%2000#156804"
+                    ),
+                    "reference_status": "repealed",
+                    "repealed_at": "2014-05-15",
+                    "repeal_notice": (
+                        "Статьи 65 и 66 утратили силу в соответствии с Законом "
+                        "Республики Узбекистан от 14 мая 2014 года № ЗРУ-372."
+                    ),
+                    "repeal_law_url": "https://lex.uz/ru/docs/2388209",
+                    "historical_revision_date": "1997-03-01",
+                }
+            ]
+        },
+    )
+    session.add(document)
+    await session.flush()
+    session.add(
+        LegalArticle(
+            document_id=document.id,
+            source_article_id="156795",
+            article_number="64",
+            title="Статья 64. Акционерное общество",
+            content="Статья 64. Акционерное общество. Действующая норма.",
+            content_hash="civil-64",
+            position=64,
+            url="https://lex.uz/ru/docs/111181#156795",
+        )
+    )
+    await session.commit()
+
+
 @pytest.fixture(autouse=True)
 def no_legal_elasticsearch(monkeypatch):
     async def unavailable(**kwargs):
@@ -173,6 +226,42 @@ async def test_legal_search_resolves_exact_code_article(db_factory, query):
     assert results[0]["document_title"] == "Уголовный кодекс Республики Узбекистан"
     assert results[0]["article_number"] == "66"
     assert results[0]["url"] == "https://lex.uz/ru/docs/111457#1723524"
+
+
+async def test_exact_repealed_article_returns_historical_edition(db_factory):
+    async with db_factory() as session:
+        await _seed_civil_code_with_repealed_article(session)
+        await _seed_criminal_code(session)
+        results = await legal_search.search_legal_articles(
+            session,
+            q="А 66 статья Гражданского кодекса?",
+            limit=8,
+        )
+
+    assert len(results) == 1
+    assert results[0]["engine"] == "sql_exact_historical"
+    assert results[0]["reference_status"] == "repealed"
+    assert results[0]["document_title"].startswith("Гражданский кодекс")
+    assert "Закрытое акционерное общество" in results[0]["content"]
+    assert "Уголовный кодекс" not in results[0]["document_title"]
+
+    basis = legal_basis_lines(results)
+    assert basis[0].startswith("Историческая редакция:")
+    assert "не является действующим правовым основанием" in basis[0]
+    assert "ЗРУ-372" in basis[0]
+    assert "https://lex.uz/ru/docs/2388209" in basis[0]
+
+
+async def test_missing_exact_article_does_not_fall_back_to_another_act(db_factory):
+    async with db_factory() as session:
+        await _seed_criminal_code(session)
+        results = await legal_search.search_legal_articles(
+            session,
+            q="Статья 66 Гражданского кодекса",
+            limit=8,
+        )
+
+    assert results == []
 
 
 async def test_law_agent_uses_local_lexuz_context(db_factory, monkeypatch):

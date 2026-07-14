@@ -166,16 +166,14 @@ async def search_legal_articles(
 
     reference = _parse_legal_reference(q)
     if reference:
-        exact = await _search_exact_reference(
+        return (await _search_exact_reference(
             db,
             document_title=reference[0],
             article_number=reference[1],
             language=language,
             source_ids=source_ids,
             doc_types=doc_types,
-        )
-        if exact:
-            return exact[:limit]
+        ))[:limit]
 
     try:
         results = await _search_es(
@@ -225,10 +223,66 @@ async def _search_exact_reference(
     if doc_types:
         query = query.where(LegalDocument.doc_type.in_(doc_types))
 
-    articles = (await db.execute(query)).scalars().unique()
+    articles = (await db.execute(query)).scalars().unique().all()
     results = [_serialize_sql(article, [f"статья {article_number}"]) for article in articles]
     for result in results:
         result["engine"] = "sql_exact"
+    if results:
+        return results
+
+    document_query = select(LegalDocument).where(
+        LegalDocument.language == language,
+        LegalDocument.status == "active",
+        LegalDocument.title.ilike(f"%{document_title}%"),
+    )
+    if source_ids:
+        document_query = document_query.where(LegalDocument.source_id.in_(source_ids))
+    if doc_types:
+        document_query = document_query.where(LegalDocument.doc_type.in_(doc_types))
+
+    documents = (await db.execute(document_query)).scalars().all()
+    for document in documents:
+        metadata = document.extra_data or {}
+        for historical in metadata.get("historical_articles", []):
+            if str(historical.get("article_number")) != article_number:
+                continue
+            repeal_notice = historical.get("repeal_notice") or (
+                f"Статья {article_number} утратила силу и отсутствует "
+                "в действующей редакции документа."
+            )
+            historical_content = historical.get("content") or ""
+            return [
+                {
+                    "id": f"historical:{document.id}:{article_number}",
+                    "source": document.source,
+                    "source_id": document.source_id,
+                    "document_id": str(document.id),
+                    "document_title": document.title,
+                    "doc_type": document.doc_type,
+                    "language": document.language,
+                    "status": document.status,
+                    "reference_status": "repealed",
+                    "article_number": article_number,
+                    "article_title": historical.get("article_title"),
+                    "content": (
+                        "ВАЖНО: это историческая редакция, а не действующая норма.\n"
+                        f"{repeal_notice}\n\n{historical_content}"
+                    ).strip(),
+                    "url": historical.get("url") or document.url,
+                    "current_document_url": document.url,
+                    "repeal_law_url": historical.get("repeal_law_url"),
+                    "repeal_notice": repeal_notice,
+                    "repealed_at": historical.get("repealed_at"),
+                    "document_number": document.number,
+                    "adopted_at": _date_iso(document.adopted_at),
+                    "current_revision_date": _date_iso(document.current_revision_date),
+                    "historical_revision_date": historical.get("historical_revision_date"),
+                    "position": 0,
+                    "score": 100,
+                    "snippets": [html.escape(repeal_notice)],
+                    "engine": "sql_exact_historical",
+                }
+            ]
     return results
 
 

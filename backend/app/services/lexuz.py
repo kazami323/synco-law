@@ -110,6 +110,46 @@ class ParsedLegalDocument:
     metadata: dict = field(default_factory=dict)
 
 
+async def load_historical_articles(
+    sources: list[dict],
+    *,
+    cache_dir: str | Path | None = None,
+    refresh: bool = False,
+) -> list[dict]:
+    """Load explicitly configured repealed articles from official Lex.uz editions."""
+    articles: list[dict] = []
+    for source in sources:
+        url = source["url"]
+        html_text = await fetch_lexuz_html(
+            url,
+            cache_dir=cache_dir,
+            refresh=refresh,
+        )
+        parsed = parse_lexuz_html(
+            html_text,
+            url=url,
+            language=source.get("language", "ru"),
+        )
+        requested = {str(number) for number in source.get("article_numbers", [])}
+        for article in parsed.articles:
+            if article.article_number not in requested:
+                continue
+            articles.append(
+                {
+                    "article_number": article.article_number,
+                    "article_title": article.title,
+                    "content": article.content,
+                    "url": article.url,
+                    "reference_status": "repealed",
+                    "repealed_at": source.get("repealed_at"),
+                    "repeal_notice": source.get("repeal_notice"),
+                    "repeal_law_url": source.get("repeal_law_url"),
+                    "historical_revision_date": _date_iso(parsed.current_revision_date),
+                }
+            )
+    return articles
+
+
 def parse_date(value: str | None) -> date | None:
     if not value:
         return None
@@ -118,6 +158,10 @@ def parse_date(value: str | None) -> date | None:
         return None
     day, month, year = match.group("date").split(".")
     return date(int(year), int(month), int(day))
+
+
+def _date_iso(value: date | None) -> str | None:
+    return value.isoformat() if value else None
 
 
 def extract_source_id(url: str) -> str:
