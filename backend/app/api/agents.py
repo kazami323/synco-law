@@ -19,7 +19,7 @@ from app.core.dependencies import get_current_user, get_upload_user
 from app.core.permissions import require_permission
 from app.db.base import async_session_factory, get_db
 from app.db.models import AgentChatSession, AgentResult, Organization, User
-from app.agents.chat import AGENT_PROMPTS, agent_chat, build_agent_prompt
+from app.agents.chat import AGENT_PROMPTS, CHAT_MAX_TOKENS, agent_chat, build_agent_prompt
 from app.agents.orchestrator import ContractAnalysisOrchestrator
 from app.agents.response_standard import append_legal_standard, legal_basis_payload
 from app.services import search as search_service
@@ -330,7 +330,7 @@ async def chat_with_agent_stream(
             async for delta in llm_text_stream(
                 system=prompt.system,
                 messages=prompt.history,
-                max_tokens=4000,
+                max_tokens=CHAT_MAX_TOKENS,
                 usage=usage,
             ):
                 parts.append(delta)
