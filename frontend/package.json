@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "package:ahost": "node scripts/package-ahost.mjs",
     "start": "next start",
     "lint": "eslint",
     "test:e2e": "playwright test",

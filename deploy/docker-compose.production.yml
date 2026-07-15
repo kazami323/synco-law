@@ -121,31 +121,10 @@ services:
       redis: { condition: service_healthy }
     networks: [private, edge]
 
-  frontend:
-    build:
-      context: ../frontend
-      args:
-        NEXT_PUBLIC_API_URL: ""
-        NEXT_PUBLIC_UPLOAD_API_URL: ""
-    restart: unless-stopped
-    environment:
-      BACKEND_URL: http://backend:8000
-      HOSTNAME: 0.0.0.0
-      PORT: 3000
-    depends_on:
-      backend: { condition: service_healthy }
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/login >/dev/null || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-    networks: [edge]
-
   caddy:
     image: caddy:2.8-alpine
     restart: unless-stopped
     environment:
-      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN}
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN}
     ports:
       - "80:80"
@@ -157,7 +136,6 @@ services:
       - caddy_config:/config
     depends_on:
       backend: { condition: service_healthy }
-      frontend: { condition: service_healthy }
     networks: [edge]
 
 networks:
