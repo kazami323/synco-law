@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   // Бэкенд различает /api/contracts и /api/contracts/ — не даём Next
   // резать завершающий слэш 308-редиректом, иначе запросы зацикливаются
   skipTrailingSlashRedirect: true,
