@@ -68,8 +68,13 @@ services:
       test: ["CMD", "clamdcheck.sh"]
       interval: 30s
       timeout: 10s
-      retries: 20
-    networks: [private]
+      # ClamAV грузит сигнатуры в память при старте — первый запуск после
+      # freshclam долгий; даём время до перевода healthcheck в unhealthy.
+      retries: 40
+      start_period: 300s
+    # edge нужен для исходящего freshclam (обновление баз с интернета);
+    # портов наружу clamav не публикует, только outbound.
+    networks: [private, edge]
 
   backend:
     build:
