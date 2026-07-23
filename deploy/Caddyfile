@@ -13,3 +13,10 @@
 	import security
 	reverse_proxy backend:8000
 }
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+	# Next.js сам выставляет CSP/HSTS/X-Frame-Options (next.config headers),
+	# поэтому snippet security здесь не импортируем — иначе задвоятся заголовки.
+	reverse_proxy frontend:3000
+}

@@ -1,48 +1,47 @@
-# Деплой SynCo: фронтенд на Ahost, бэкенд на Contabo
+# Деплой SynCo: весь стек на Contabo VPS
 
-Split-топология:
+Всё живёт на одном Contabo VPS (фронт + бэк + данные + Caddy). Ahost остаётся только
+как DNS-провайдер и почта.
 
 ```text
 synco.law / www.synco.law  -> Ahost (лендинг + почта, не трогаем)
-app.synco.law              -> Ahost «Setup Node.js App» (Next.js фронтенд, server.js)
-api.synco.law              -> Contabo VPS (FastAPI + Postgres/Redis/MinIO/ES/ClamAV + Caddy)
+app.synco.law              -> Contabo VPS (Next.js фронтенд)      \
+api.synco.law              -> Contabo VPS (FastAPI + данные)       > один сервер, Caddy отдаёт оба
 ```
 
-Браузер ходит в бэкенд **напрямую** по `https://api.synco.law`. Так как `app` и `api` —
-поддомены одного сайта `synco.law` (same-site), httpOnly-куки авторизации ходят без
-проблем, а прокси не нужен. Большие загрузки и долгие AI-запросы не проходят через
-shared-хостинг Ahost.
+Caddy на VPS выдаёт HTTPS обоим поддоменам и проксирует: `app` → контейнер фронта (:3000),
+`api` → бэкенд (:8000). Браузер ходит в API **напрямую** по `https://api.synco.law`; так как
+`app` и `api` — поддомены одного сайта `synco.law` (same-site), httpOnly-куки авторизации
+ходят без прокси.
 
 Все данные (Postgres, Redis, MinIO, Elasticsearch, ClamAV) сидят во внутренней Docker-сети
-`private` без публикации портов наружу. Снаружи на VPS открыт только Caddy (80/443).
+`private` без публикации портов наружу. Снаружи открыт только Caddy (80/443).
 
 **VPS:** Contabo, IP `169.58.51.56`, Ubuntu, доступ по SSH под `root`.
 
 ---
 
-## Шаг 1. DNS и поддомены (делать первым — Caddy без DNS не выпустит HTTPS)
+## Шаг 1. DNS (делать первым — Caddy без DNS не выпустит HTTPS)
 
-Два поддомена в cPanel Ahost:
-
-**1. `api.synco.law` → Contabo.** В **Zone Editor** для `synco.law` добавь A-запись:
+В DNS-панели Ahost для `synco.law` добавь **две A-записи**, обе на IP Contabo:
 
 ```text
 Type: A    Name: api    Value: 169.58.51.56    TTL: по умолчанию
+Type: A    Name: app    Value: 169.58.51.56    TTL: по умолчанию
 ```
 
-**2. `app.synco.law` → Ahost.** В **Subdomains** создай поддомен `app` (DNS внутри Ahost
-поднимется автоматически). Само Node.js-приложение привяжем к нему на Шаге 6.
+Поддомен/хостинг на Ahost создавать НЕ надо — фронт живёт на Contabo, сюда нужны только
+DNS-записи. НЕ трогай `@`, `www`, `MX`, `mail`, `SPF`, `DKIM`, `DMARC` — это почта и лендинг.
 
-НЕ трогай записи `@`, `www`, `MX`, `mail`, `SPF`, `DKIM`, `DMARC` — это почта и лендинг.
-
-Проверь распространение api-записи (может занять от минут до часа):
+Проверь распространение (может занять от минут до часа):
 
 ```bash
 nslookup api.synco.law
+nslookup app.synco.law
 ```
 
-Должен вернуть `169.58.51.56`. Дальше идти можно, пока DNS долетает — Caddy сам возьмёт
-сертификат, как только домен зарезолвится.
+Оба должны вернуть `169.58.51.56`. Дальше идти можно, пока DNS долетает — Caddy сам возьмёт
+сертификаты, как только домены зарезолвятся.
 
 ---
 
@@ -106,13 +105,14 @@ scp "deploy/.env.production" root@169.58.51.56:/root/synco-law/deploy/.env.produ
 Проверь на VPS, что ключевые значения на месте (секреты покажет частично):
 
 ```bash
-grep -E '^(API_DOMAIN|ENVIRONMENT|CORS_ORIGINS|PUBLIC_APP_URL)=' \
+grep -E '^(API_DOMAIN|APP_DOMAIN|ENVIRONMENT|CORS_ORIGINS|PUBLIC_APP_URL)=' \
   /root/synco-law/deploy/.env.production
 ```
 
 Ожидаемо (CORS и PUBLIC_APP_URL уже настроены под фронт на `app.synco.law`):
 ```dotenv
 API_DOMAIN=api.synco.law
+APP_DOMAIN=app.synco.law
 ENVIRONMENT=staging
 PUBLIC_APP_URL=https://app.synco.law
 CORS_ORIGINS=["https://app.synco.law","https://synco.law","https://www.synco.law"]
@@ -127,11 +127,11 @@ cd /root/synco-law/deploy
 docker compose --env-file .env.production -f docker-compose.production.yml up -d --build
 ```
 
-Первый запуск идёт **несколько минут**:
-- собирается образ бэкенда (pip install);
-- **ClamAV** первым делом качает базы сигнатур (`freshclam`) — это самое долгое,
-  до ~5 минут. Бэкенд ждёт, пока ClamAV не станет `healthy` (`CLAMAV_REQUIRED=true`).
-  Это нормально, не паникуй.
+Первый запуск идёт **несколько минут** (дольше обычного — собираются оба образа):
+- образ бэкенда (pip install);
+- образ фронтенда (`npm ci` + `next build` — самое ресурсоёмкое; 8 ГБ RAM + swap хватает);
+- **ClamAV** качает базы сигнатур (`freshclam`) — до ~5 минут. Бэкенд ждёт, пока ClamAV
+  не станет `healthy` (`CLAMAV_REQUIRED=true`). Это нормально, не паникуй.
 
 Следи за состоянием:
 
@@ -139,11 +139,12 @@ docker compose --env-file .env.production -f docker-compose.production.yml up -d
 docker compose --env-file .env.production -f docker-compose.production.yml ps
 # логи конкретного сервиса, если что-то красное:
 docker compose --env-file .env.production -f docker-compose.production.yml logs -f backend
+docker compose --env-file .env.production -f docker-compose.production.yml logs -f frontend
 docker compose --env-file .env.production -f docker-compose.production.yml logs -f caddy
 ```
 
-Ждём, пока `backend` и `caddy` будут `healthy`/`running`, а `postgres/redis/minio/clamav` —
-`healthy`.
+Ждём, пока `backend`, `frontend`, `caddy` будут `healthy`/`running`, а
+`postgres/redis/minio/clamav` — `healthy`.
 
 ---
 
@@ -167,56 +168,33 @@ Swagger должен открываться: `https://api.synco.law/docs`.
 
 ---
 
-## Шаг 6. Собрать фронтенд и залить на Ahost
+## Шаг 6. Проверка фронтенда и полный прогон
 
-### 6.1. Собрать пакет (на Windows-ПК, Docker Desktop должен быть запущен)
+Фронтенд собирается и поднимается автоматически на Шаге 4 (сервис `frontend` в стеке),
+Caddy отдаёт его на `app.synco.law`. Отдельно ничего собирать/заливать не нужно.
 
-Сборка идёт в Linux-образе (тот же, что на Contabo), поэтому нужен запущенный Docker.
-API-адрес `https://api.synco.law` вшивается в бандл на этом шаге.
-
-```powershell
-cd frontend
-npm run package:ahost
-```
-
-Результат — архив:
-
-```text
-frontend/deploy-output/synco-ahost-frontend.tar.gz
-```
-
-### 6.2. Поднять Node.js-приложение в cPanel Ahost
-
-1. Поддомен `app.synco.law` уже создан (Шаг 1).
-2. Открой **Setup Node.js App** → Create Application.
-3. Node.js version: **22 или 24**.
-4. Application mode: **Production**.
-5. Application root: новая папка, например `app_synco`.
-6. Application URL: `app.synco.law`.
-7. Application startup file: `server.js`.
-8. Создай приложение, затем через File Manager залей `synco-ahost-frontend.tar.gz`
-   в папку `app_synco` и распакуй (Extract) прямо в неё (файлы `server.js`, `.next/`,
-   `public/`, `node_modules/` должны лежать в корне `app_synco`).
-9. В настройках приложения добавь переменную окружения `NODE_ENV=production`
-   (и, для подстраховки серверных вызовов, `BACKEND_URL=https://api.synco.law`).
-10. **Restart** приложения.
-
-> `NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_UPLOAD_API_URL` уже вшиты в сборку (Шаг 6.1) —
-> на Ahost их задавать не нужно. Браузер ходит прямо в `api.synco.law`.
-
-### 6.3. Проверка
-
-Открой `https://app.synco.law` и проверь:
-1. Логин.
+Открой `https://app.synco.law` и проверь end-to-end:
+1. Логин / регистрация.
 2. Создание контракта из текста.
 3. AI-анализ и чат с агентом (Anthropic-ключ уже в `.env.production`).
 4. Загрузку PDF/DOCX (идёт напрямую в `api.synco.law`).
 
-Теперь бэкенд не зависит от твоего ПК и cloudflared-туннеля — можно гасить туннель и
-uvicorn на ПК. Если раньше фронт крутился на Vercel — со временем его можно отключить.
+Если фронт не открывается:
 
-> Если что-то пересобираешь на фронте — повтори Шаг 6.1 и перезалей архив: API-адрес
-> запечён в бандл, живого env для него на Ahost нет.
+```bash
+# жив ли контейнер фронта и что в логах сборки/старта
+docker compose --env-file .env.production -f docker-compose.production.yml ps frontend
+docker compose --env-file .env.production -f docker-compose.production.yml logs --tail=50 frontend
+# сертификат app.synco.law (нужен DNS + порт 80)
+docker compose --env-file .env.production -f docker-compose.production.yml logs caddy | grep -i app.synco.law
+```
+
+Теперь весь стек не зависит от твоего ПК и cloudflared-туннеля — их можно гасить.
+Если раньше фронт крутился на Vercel, со временем его можно отключить.
+
+> Обновление фронта после правок кода — обычным `git pull` + `up -d --build` (Шаг
+> «Эксплуатация»): `next build` пересоберётся на VPS. `NEXT_PUBLIC_API_URL` подставляется
+> из `API_DOMAIN` в момент сборки образа.
 
 ---
 

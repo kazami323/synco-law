@@ -126,11 +126,33 @@ services:
       redis: { condition: service_healthy }
     networks: [private, edge]
 
+  frontend:
+    build:
+      context: ../frontend
+      # NEXT_PUBLIC_* запекаются в бандл при сборке: браузер ходит в API напрямую
+      # по https://api.synco.law (app и api — один сайт synco.law, куки same-site).
+      args:
+        NEXT_PUBLIC_API_URL: https://${API_DOMAIN}
+        NEXT_PUBLIC_UPLOAD_API_URL: https://${API_DOMAIN}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Прокси /api (route.ts) в этой схеме не задействован — задаём как страховку
+      # для возможных серверных вызовов Next по внутренней сети.
+      BACKEND_URL: http://backend:8000
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000',r=>process.exit(r.statusCode?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks: [edge]
+
   caddy:
     image: caddy:2.8-alpine
     restart: unless-stopped
     environment:
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN}
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN}
     ports:
       - "80:80"
       - "443:443"
@@ -141,6 +163,7 @@ services:
       - caddy_config:/config
     depends_on:
       backend: { condition: service_healthy }
+      frontend: { condition: service_healthy }
     networks: [edge]
 
 networks:
