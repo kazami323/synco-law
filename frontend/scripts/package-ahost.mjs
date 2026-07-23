@@ -56,6 +56,11 @@ writeFileSync(
   "utf8",
 );
 
-run("tar", ["-czf", archive, "-C", packageDir, "."]);
+// Пути передаём относительными и запускаем из outputRoot: на Windows GNU tar
+// принимает абсолютный "C:\...tar.gz" за host:path (буква диска до двоеточия =
+// "хост") и падает с "Cannot connect to C". Относительные имена этого избегают.
+run("tar", ["-czf", "synco-ahost-frontend.tar.gz", "-C", "ahost-frontend", "."], {
+  cwd: outputRoot,
+});
 
 console.log(`\nAhost package: ${archive}`);
