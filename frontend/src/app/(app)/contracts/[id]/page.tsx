@@ -22,7 +22,7 @@ import {
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { api, apiDownload } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import type {
@@ -161,8 +161,9 @@ export default function ContractPage() {
   });
 
   async function download() {
-    const { url } = await api<{ url: string }>(`/api/contracts/${id}/download`);
-    window.open(url, "_blank");
+    if (!c?.file_path) return;
+    const filename = c.file_path.split("/").pop() || "document";
+    await apiDownload(`/api/contracts/${id}/download`, filename);
   }
 
   function openSignModal() {

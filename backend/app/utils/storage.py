@@ -60,3 +60,19 @@ def presigned_download_url(key: str, expires_seconds: int = 3600) -> str:
         Params={"Bucket": settings.MINIO_BUCKET, "Key": key},
         ExpiresIn=expires_seconds,
     )
+
+
+def open_download_stream(key: str):
+    """Открывает объект MinIO для отдачи наружу через бэкенд.
+
+    Возвращает (тело, content_type, размер|None). Тело — botocore
+    StreamingBody: читать чанками через ``.iter_chunks()``, в конце ``.close()``.
+    Так файл идёт браузеру через api-домен, а MinIO остаётся во внутренней сети
+    (presigned-ссылка вела бы на недоступный `minio:9000`).
+    """
+    obj = get_s3().get_object(Bucket=settings.MINIO_BUCKET, Key=key)
+    return (
+        obj["Body"],
+        obj.get("ContentType") or "application/octet-stream",
+        obj.get("ContentLength"),
+    )

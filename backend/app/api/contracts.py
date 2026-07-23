@@ -4,12 +4,15 @@
 external) — только созданные самим пользователем.
 """
 
+import asyncio
 import csv
 import hashlib
 import io
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from urllib.parse import quote
 
+from botocore.exceptions import ClientError
 from fastapi import (
     APIRouter,
     Depends,
@@ -22,6 +25,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,7 +69,7 @@ from app.services.signature import (
 from app.utils.audit import log_action
 from app.utils.document_parser import parse_file, pdf_needs_ocr
 from app.utils.llm import collect_usage, extract_pdf_text
-from app.utils.storage import presigned_download_url, upload_file_async
+from app.utils.storage import open_download_stream, upload_file_async
 from app.utils.upload_security import UploadSecurityError, secure_upload
 
 router = APIRouter(prefix="/api/contracts", tags=["contracts"])
@@ -747,8 +751,31 @@ async def download_original(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Временная ссылка на исходный файл в MinIO."""
+    """Стримит исходный файл контракта из MinIO через бэкенд.
+
+    Файл отдаём сами, а не presigned-ссылкой: в проде MinIO закрыт во внутренней
+    сети и недоступен браузеру напрямую (ссылка вела бы на `minio:9000`).
+    """
     contract = await get_visible_contract(contract_id, user, db)
     if not contract.file_path:
         raise HTTPException(status_code=404, detail="У контракта нет исходного файла")
-    return {"url": presigned_download_url(contract.file_path)}
+    try:
+        body, content_type, content_length = await asyncio.to_thread(
+            open_download_stream, contract.file_path
+        )
+    except ClientError:
+        raise HTTPException(status_code=404, detail="Исходный файл не найден в хранилище")
+
+    filename = contract.file_path.rsplit("/", 1)[-1] or "document"
+
+    def _iter():
+        try:
+            for chunk in body.iter_chunks(256 * 1024):
+                yield chunk
+        finally:
+            body.close()
+
+    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"}
+    if content_length is not None:
+        headers["Content-Length"] = str(content_length)
+    return StreamingResponse(_iter(), media_type=content_type, headers=headers)

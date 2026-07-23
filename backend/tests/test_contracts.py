@@ -210,12 +210,13 @@ async def test_upload_docx_parses_text_and_stores_file(client, admin_headers):
     assert "ДОГОВОР АРЕНДЫ" in body["content"]
     assert body["file_path"]
 
-    # ссылка на скачивание выдаётся
+    # исходный файл отдаётся стримом (attachment), а не presigned-ссылкой
     resp = await client.get(
         f"/api/contracts/{body['id']}/download", headers=admin_headers
     )
     assert resp.status_code == 200
-    assert "http" in resp.json()["url"]
+    assert "attachment" in resp.headers.get("content-disposition", "")
+    assert resp.content == buf.getvalue()
 
 
 async def test_upload_unsupported_extension(client, admin_headers):
