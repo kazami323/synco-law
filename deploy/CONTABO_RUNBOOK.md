@@ -1,38 +1,48 @@
-# Деплой бэкенда на Contabo VPS
+# Деплой SynCo: фронтенд на Ahost, бэкенд на Contabo
 
-Топология: **backend + все данные + Caddy** едут на одном Contabo VPS (8 ГБ RAM).
-Фронтенд остаётся на Vercel. Браузер и Vercel ходят в бэкенд по `https://api.synco.law`.
+Split-топология:
 
 ```text
-synco.law / synco-law.vercel.app  -> Vercel (Next.js фронтенд)
-api.synco.law                     -> Contabo VPS (FastAPI + Postgres/Redis/MinIO/ES/ClamAV + Caddy)
+synco.law / www.synco.law  -> Ahost (лендинг + почта, не трогаем)
+app.synco.law              -> Ahost «Setup Node.js App» (Next.js фронтенд, server.js)
+api.synco.law              -> Contabo VPS (FastAPI + Postgres/Redis/MinIO/ES/ClamAV + Caddy)
 ```
 
+Браузер ходит в бэкенд **напрямую** по `https://api.synco.law`. Так как `app` и `api` —
+поддомены одного сайта `synco.law` (same-site), httpOnly-куки авторизации ходят без
+проблем, а прокси не нужен. Большие загрузки и долгие AI-запросы не проходят через
+shared-хостинг Ahost.
+
 Все данные (Postgres, Redis, MinIO, Elasticsearch, ClamAV) сидят во внутренней Docker-сети
-`private` без публикации портов наружу. Снаружи открыт только Caddy (80/443).
+`private` без публикации портов наружу. Снаружи на VPS открыт только Caddy (80/443).
 
 **VPS:** Contabo, IP `169.58.51.56`, Ubuntu, доступ по SSH под `root`.
 
 ---
 
-## Шаг 1. DNS (делать первым — Caddy без него не выпустит HTTPS-сертификат)
+## Шаг 1. DNS и поддомены (делать первым — Caddy без DNS не выпустит HTTPS)
 
-В **cPanel Ahost → Zone Editor** для домена `synco.law` добавь одну запись:
+Два поддомена в cPanel Ahost:
+
+**1. `api.synco.law` → Contabo.** В **Zone Editor** для `synco.law` добавь A-запись:
 
 ```text
 Type: A    Name: api    Value: 169.58.51.56    TTL: по умолчанию
 ```
 
+**2. `app.synco.law` → Ahost.** В **Subdomains** создай поддомен `app` (DNS внутри Ahost
+поднимется автоматически). Само Node.js-приложение привяжем к нему на Шаге 6.
+
 НЕ трогай записи `@`, `www`, `MX`, `mail`, `SPF`, `DKIM`, `DMARC` — это почта и лендинг.
 
-Проверь распространение (может занять от минут до часа):
+Проверь распространение api-записи (может занять от минут до часа):
 
 ```bash
 nslookup api.synco.law
 ```
 
-Должен вернуть `169.58.51.56`. Дальше идти можно, пока DNS долетает — Caddy сам возьмёт сертификат,
-как только домен зарезолвится.
+Должен вернуть `169.58.51.56`. Дальше идти можно, пока DNS долетает — Caddy сам возьмёт
+сертификат, как только домен зарезолвится.
 
 ---
 
@@ -100,12 +110,12 @@ grep -E '^(API_DOMAIN|ENVIRONMENT|CORS_ORIGINS|PUBLIC_APP_URL)=' \
   /root/synco-law/deploy/.env.production
 ```
 
-Ожидаемо:
+Ожидаемо (CORS и PUBLIC_APP_URL уже настроены под фронт на `app.synco.law`):
 ```dotenv
 API_DOMAIN=api.synco.law
 ENVIRONMENT=staging
-PUBLIC_APP_URL=https://synco.law
-CORS_ORIGINS=["https://synco-law.vercel.app","https://synco.law","https://www.synco.law"]
+PUBLIC_APP_URL=https://app.synco.law
+CORS_ORIGINS=["https://app.synco.law","https://synco.law","https://www.synco.law"]
 ```
 
 ---
@@ -157,39 +167,56 @@ Swagger должен открываться: `https://api.synco.law/docs`.
 
 ---
 
-## Шаг 6. Переключить фронтенд Vercel на новый бэкенд (с Windows-ПК)
+## Шаг 6. Собрать фронтенд и залить на Ahost
 
-Сейчас Vercel ходит в бэкенд через cloudflared-туннель на твоём ПК. Меняем на VPS.
+### 6.1. Собрать пакет (на Windows-ПК, Docker Desktop должен быть запущен)
 
-Две переменные окружения на Vercel (проект `synco-law`, Production):
-
-| Переменная                     | Значение                | Роль                                            |
-|--------------------------------|-------------------------|-------------------------------------------------|
-| `BACKEND_URL`                  | `https://api.synco.law` | серверный прокси `/api/*` (route.ts)            |
-| `NEXT_PUBLIC_UPLOAD_API_URL`   | `https://api.synco.law` | прямые загрузки файлов из браузера, минуя Vercel |
-
-`NEXT_PUBLIC_API_URL` **оставить пустым** (фронт ходит на `/api` того же origin → прокси).
-
-Через CLI из папки `frontend/`:
+Сборка идёт в Linux-образе (тот же, что на Contabo), поэтому нужен запущенный Docker.
+API-адрес `https://api.synco.law` вшивается в бандл на этом шаге.
 
 ```powershell
 cd frontend
-vercel env rm BACKEND_URL production
-vercel env add BACKEND_URL production            # вставить https://api.synco.law
-vercel env rm NEXT_PUBLIC_UPLOAD_API_URL production
-vercel env add NEXT_PUBLIC_UPLOAD_API_URL production   # вставить https://api.synco.law
-vercel deploy --prod --yes
+npm run package:ahost
 ```
 
-Редеплой обязателен: `NEXT_PUBLIC_*` запекается в бандл при сборке.
+Результат — архив:
 
-После деплоя проверь на проде (https://synco-law.vercel.app):
+```text
+frontend/deploy-output/synco-ahost-frontend.tar.gz
+```
+
+### 6.2. Поднять Node.js-приложение в cPanel Ahost
+
+1. Поддомен `app.synco.law` уже создан (Шаг 1).
+2. Открой **Setup Node.js App** → Create Application.
+3. Node.js version: **22 или 24**.
+4. Application mode: **Production**.
+5. Application root: новая папка, например `app_synco`.
+6. Application URL: `app.synco.law`.
+7. Application startup file: `server.js`.
+8. Создай приложение, затем через File Manager залей `synco-ahost-frontend.tar.gz`
+   в папку `app_synco` и распакуй (Extract) прямо в неё (файлы `server.js`, `.next/`,
+   `public/`, `node_modules/` должны лежать в корне `app_synco`).
+9. В настройках приложения добавь переменную окружения `NODE_ENV=production`
+   (и, для подстраховки серверных вызовов, `BACKEND_URL=https://api.synco.law`).
+10. **Restart** приложения.
+
+> `NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_UPLOAD_API_URL` уже вшиты в сборку (Шаг 6.1) —
+> на Ahost их задавать не нужно. Браузер ходит прямо в `api.synco.law`.
+
+### 6.3. Проверка
+
+Открой `https://app.synco.law` и проверь:
 1. Логин.
 2. Создание контракта из текста.
 3. AI-анализ и чат с агентом (Anthropic-ключ уже в `.env.production`).
 4. Загрузку PDF/DOCX (идёт напрямую в `api.synco.law`).
 
-Теперь бэкенд не зависит от твоего ПК и туннеля — можно гасить cloudflared и uvicorn на ПК.
+Теперь бэкенд не зависит от твоего ПК и cloudflared-туннеля — можно гасить туннель и
+uvicorn на ПК. Если раньше фронт крутился на Vercel — со временем его можно отключить.
+
+> Если что-то пересобираешь на фронте — повтори Шаг 6.1 и перезалей архив: API-адрес
+> запечён в бандл, живого env для него на Ahost нет.
 
 ---
 
