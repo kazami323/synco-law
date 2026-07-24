@@ -1,14 +1,19 @@
 import {
   Briefcase,
+  ClipboardCheck,
   FileText,
   Handshake,
   KeyRound,
   Lock,
+  Scale,
+  ShieldAlert,
   ShoppingCart,
   type LucideIcon,
 } from "lucide-react";
+import { Sparkles, UserCheck } from "lucide-react";
 import { Chip } from "@/components/ui";
-import { CONTRACT_TYPES } from "@/lib/types";
+import { CONTRACT_TYPES, type DocumentLabel } from "@/lib/types";
+import { labelActor, labelSpec } from "@/lib/labels";
 
 const TYPE_ICONS: Record<string, LucideIcon> = {
   purchase: ShoppingCart,
@@ -16,6 +21,9 @@ const TYPE_ICONS: Record<string, LucideIcon> = {
   service: Handshake,
   nda: Lock,
   employment: Briefcase,
+  risk_map: ShieldAlert,
+  legal_opinion: Scale,
+  contract_review: ClipboardCheck,
   other: FileText,
 };
 
@@ -67,4 +75,35 @@ export function RiskChip({ score }: { score: number | null }) {
 
 export function TypeChip({ type }: { type: string | null }) {
   return <Chip tone="neutral">{type ? CONTRACT_TYPES[type] ?? type : "—"}</Chip>;
+}
+
+/**
+ * Плашки документа: «Проверено ИИ», «Подготовлено», «Утверждено».
+ * В списках показываем компактно (без автора), в карточке — с автором.
+ */
+export function LabelChips({
+  labels,
+  compact = false,
+}: {
+  labels: DocumentLabel[] | undefined;
+  compact?: boolean;
+}) {
+  if (!labels?.length) return null;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      {labels.map((label) => {
+        const spec = labelSpec(label.kind);
+        const Icon = label.actor_type === "agent" ? Sparkles : UserCheck;
+        return (
+          <Chip key={label.kind} tone={spec.tone}>
+            <Icon size={12} />
+            {spec.title}
+            {!compact && (
+              <span className="opacity-70">· {labelActor(label)}</span>
+            )}
+          </Chip>
+        );
+      })}
+    </span>
+  );
 }

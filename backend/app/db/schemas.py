@@ -99,6 +99,18 @@ class ContractUpdate(BaseModel):
     changes_description: str | None = None
 
 
+class LabelSummary(BaseModel):
+    """Плашка в списке документов. Название и цвет фронт берёт из своего
+    каталога по kind — здесь только данные, зависящие от документа."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    kind: str
+    actor_type: str
+    actor_name: str | None = None
+    actor_role: str | None = None
+
+
 class ContractOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -109,6 +121,7 @@ class ContractOut(BaseModel):
     status: str
     risk_score: int | None = None
     project_id: uuid.UUID | None = None
+    labels: list[LabelSummary] = []
     created_at: datetime
     updated_at: datetime
 

@@ -32,6 +32,14 @@ export interface DashboardMetrics {
   avg_review_time: number | null;
 }
 
+/** Отметка («плашка») на документе: кто и что с ним сделал. */
+export interface DocumentLabel {
+  kind: string;
+  actor_type: "agent" | "user";
+  actor_name: string | null;
+  actor_role: string | null;
+}
+
 export interface Contract {
   id: string;
   title: string;
@@ -40,6 +48,7 @@ export interface Contract {
   status: string;
   risk_score: number | null;
   project_id: string | null;
+  labels: DocumentLabel[];
   created_at: string;
   updated_at: string;
 }
@@ -122,6 +131,10 @@ export const CONTRACT_TYPES: Record<string, string> = {
   service: "Подряд / услуги",
   nda: "NDA",
   employment: "Трудовой",
+  // Продукты работы юриста и агентов — тоже документы проекта
+  risk_map: "Риск-карта",
+  legal_opinion: "Правовое заключение",
+  contract_review: "Проверка контракта",
   other: "Другое",
 };
 

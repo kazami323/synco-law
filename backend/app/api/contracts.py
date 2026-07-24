@@ -29,6 +29,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.dependencies import get_current_user, get_upload_user
@@ -117,11 +118,15 @@ async def get_visible_contract(
 ) -> Contract:
     """Контракт организации пользователя с учётом права видимости."""
     org_id = _require_org(user)
-    query = select(Contract).where(
-        Contract.id == contract_id, Contract.organization_id == org_id
+    query = (
+        select(Contract)
+        .where(Contract.id == contract_id, Contract.organization_id == org_id)
+        # Плашки отдаём вместе с документом: ленивая подгрузка в async-сессии
+        # выбросила бы MissingGreenlet при сериализации ответа.
+        .options(selectinload(Contract.labels))
     )
     if for_update:
-        query = query.with_for_update()
+        query = query.with_for_update(of=Contract)
     result = await db.execute(query)
     contract = result.scalar_one_or_none()
     if contract is None:
@@ -320,6 +325,8 @@ async def list_contracts(
         query.order_by(Contract.created_at.desc())
         .offset((page - 1) * limit)
         .limit(limit)
+        # Один дополнительный запрос на всю страницу вместо N обращений из UI
+        .options(selectinload(Contract.labels))
     )
     return ContractListResponse(
         total=total, page=page, items=list(result.scalars().all())

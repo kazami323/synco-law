@@ -54,11 +54,20 @@ class ContractStatus(str, enum.Enum):
 
 
 class ContractType(str, enum.Enum):
+    """Тип документа в проекте.
+
+    Кроме договоров в проекте лежат продукты работы юриста и агентов:
+    риск-карта, правовое заключение, проверка контракта.
+    """
+
     PURCHASE = "purchase"
     LEASE = "lease"
     SERVICE = "service"
     NDA = "nda"
     EMPLOYMENT = "employment"
+    RISK_MAP = "risk_map"
+    LEGAL_OPINION = "legal_opinion"
+    CONTRACT_REVIEW = "contract_review"
     OTHER = "other"
 
 
@@ -236,6 +245,12 @@ class Contract(Base):
     workflow_states: Mapped[list["WorkflowState"]] = relationship(
         back_populates="contract", cascade="all, delete-orphan"
     )
+    # lazy="selectin": плашки нужны почти везде, где показывается документ,
+    # а ленивая подгрузка в async-сессии падает с MissingGreenlet при
+    # сериализации ответа (в т.ч. сразу после создания документа).
+    labels: Mapped[list["DocumentLabel"]] = relationship(
+        back_populates="contract", cascade="all, delete-orphan", lazy="selectin"
+    )
     deadlines: Mapped[list["ContractDeadline"]] = relationship(
         back_populates="contract", cascade="all, delete-orphan"
     )
@@ -372,6 +387,45 @@ class WorkflowState(Base):
     )
 
     contract: Mapped[Contract] = relationship(back_populates="workflow_states")
+
+
+class DocumentLabel(Base):
+    """Отметка («плашка») на документе: кто и что с ним сделал.
+
+    В отличие от линейного статуса договора, отметок на документе может висеть
+    несколько одновременно — «Проверено ИИ», «Подготовлено», «Утверждено», —
+    и каждая помнит автора (агента или юриста), его роль и время.
+    Уникальность по (документ, вид) — плашка либо стоит, либо нет; повторная
+    простановка обновляет автора, а история изменений остаётся в audit_log.
+    """
+
+    __tablename__ = "document_labels"
+    __table_args__ = (
+        UniqueConstraint("contract_id", "kind", name="uq_document_label_kind"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(64), index=True)
+    actor_type: Mapped[str] = mapped_column(String(16))  # agent | user
+    actor_agent: Mapped[str | None] = mapped_column(String(64))
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    # Снимок роли и имени на момент простановки: если человеку позже сменят
+    # должность, старая плашка не должна «переписываться» задним числом.
+    actor_role: Mapped[str | None] = mapped_column(String(32))
+    actor_name: Mapped[str | None] = mapped_column(String(256))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), index=True
+    )
+
+    contract: Mapped[Contract] = relationship(back_populates="labels")
 
 
 class AuditLog(Base):

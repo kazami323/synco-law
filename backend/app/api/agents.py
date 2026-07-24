@@ -24,6 +24,7 @@ from app.agents.orchestrator import ContractAnalysisOrchestrator
 from app.agents.response_standard import append_legal_standard, legal_basis_payload
 from app.services import search as search_service
 from app.services.ai_usage import enforce_ai_access, record_ai_usage
+from app.services.labels import set_label
 from app.utils.audit import log_action
 from app.utils.document_parser import parse_file, pdf_needs_ocr
 from app.utils.llm import (
@@ -105,6 +106,20 @@ async def _perform_contract_analysis(
     contract.risk_score = report["analysis"]["risk_agent"].get("overall_score")
     if contract.status == "draft":
         contract.status = "analyzed"
+
+    # Документ прошёл проверку ИИ — вешаем плашку, чтобы это видела вся команда.
+    # Автором указываем риск-агента: именно он даёт итоговую оценку риска.
+    await set_label(
+        db,
+        contract.id,
+        "ai_reviewed",
+        agent_name="risk_agent",
+        note=(
+            f"Оценка риска: {contract.risk_score}"
+            if contract.risk_score is not None
+            else None
+        ),
+    )
 
     await log_action(
         db,

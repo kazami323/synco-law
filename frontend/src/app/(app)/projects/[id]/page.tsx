@@ -18,7 +18,12 @@ import {
   Modal,
   Skeleton,
 } from "@/components/ui";
-import { RiskChip, StatusChip, TypeChip } from "@/components/contract-chips";
+import {
+  LabelChips,
+  RiskChip,
+  StatusChip,
+  TypeChip,
+} from "@/components/contract-chips";
 import { CreateContractModal } from "@/components/create-contract-modal";
 
 interface ContractList {
@@ -162,8 +167,13 @@ export default function ProjectPage() {
                     onClick={() => router.push(`/contracts/${c.id}`)}
                     className="border-t border-outline-variant hover:bg-surface-container-low cursor-pointer"
                   >
-                    <td className="px-6 py-4 text-primary font-medium">
-                      {c.title}
+                    <td className="px-6 py-4">
+                      <div className="text-primary font-medium">{c.title}</div>
+                      {c.labels?.length ? (
+                        <div className="mt-1.5">
+                          <LabelChips labels={c.labels} compact />
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-6 py-4">
                       <TypeChip type={c.contract_type} />

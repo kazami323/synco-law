@@ -11,6 +11,7 @@ from app.api import (
     chat_sessions,
     contracts,
     dashboard,
+    labels,
     legal,
     notifications,
     organizations,
@@ -67,6 +68,7 @@ app.include_router(dashboard.router)
 app.include_router(legal.router)
 app.include_router(notifications.router)
 app.include_router(workflow.router)
+app.include_router(labels.router)
 app.include_router(search.router)
 
 

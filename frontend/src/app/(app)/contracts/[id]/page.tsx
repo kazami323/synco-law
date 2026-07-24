@@ -43,12 +43,14 @@ import {
   Spinner,
 } from "@/components/ui";
 import {
+  LabelChips,
   RiskChip,
   StatusChip,
   TypeChip,
   TypeIcon,
 } from "@/components/contract-chips";
 import { AnalysisSection } from "@/components/analysis-section";
+import { DocumentLabelsPanel } from "@/components/document-labels-panel";
 import { TranslateModal } from "@/components/translate-modal";
 import { WorkflowPanel } from "@/components/workflow-panel";
 import {
@@ -240,6 +242,7 @@ export default function ContractPage() {
               <TypeChip type={c.contract_type} />
               <StatusChip status={c.status} />
               <RiskChip score={c.risk_score} />
+              <LabelChips labels={c.labels} compact />
             </div>
           </div>
         </div>
@@ -363,6 +366,7 @@ export default function ContractPage() {
         </div>
 
         <div className="space-y-6">
+          <DocumentLabelsPanel contractId={c.id} labels={c.labels ?? []} />
           <WorkflowPanel contractId={c.id} />
           <DeadlinesPanel contractId={c.id} canEdit={canEdit} />
 
