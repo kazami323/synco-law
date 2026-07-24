@@ -1,0 +1,61 @@
+FIRSOV.UZ SOURCE-AVAILABLE LICENSE
+Version 1.0, July 2026
+
+Copyright (c) 2026 Danil Firsov / FIRSOV.UZ.
+All rights reserved.
+
+1. Purpose
+
+This repository is made publicly available for review, reference, security
+research, and evaluation of the work of FIRSOV.UZ. It is source-available,
+but it is not open-source software.
+
+2. Limited permission
+
+You may view the repository and make a personal, non-commercial copy solely
+for private evaluation, education, or security research. You may use GitHub's
+standard viewing and forking features to the extent permitted by GitHub's
+Terms of Service.
+
+3. Restrictions
+
+Without prior written permission from the copyright holder, you may not:
+
+- use the code, design, content, data, or assets in production, commercial,
+  freelance, client, or revenue-generating work;
+- copy, modify, publish, distribute, sublicense, sell, rent, or otherwise
+  provide substantial portions of this repository to another person;
+- publish a clone, derivative website, application, template, theme, course,
+  dataset, or competing product based on this repository;
+- perform automated scraping, bulk collection, mirroring, or extraction for
+  reuse, redistribution, profiling, or commercial analysis;
+- use repository content to create a dataset or to train, fine-tune, evaluate,
+  or improve an artificial-intelligence or machine-learning system;
+- remove or obscure copyright, attribution, trademark, or license notices;
+- represent the repository or a derivative work as your own original work.
+
+4. Third-party components
+
+Third-party libraries, frameworks, fonts, media, and other components remain
+subject to their respective licenses. This license applies only to material
+for which Danil Firsov or FIRSOV.UZ owns the copyright.
+
+5. No trademark license
+
+No permission is granted to use the FIRSOV.UZ name, logo, brand identity, or
+other trademarks.
+
+6. Termination
+
+Any permission granted by this license terminates automatically if you breach
+its terms. On termination, you must stop using the material and delete copies
+under your control, except where retention is required by law.
+
+7. Disclaimer
+
+THE MATERIAL IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. TO THE
+MAXIMUM EXTENT PERMITTED BY LAW, THE COPYRIGHT HOLDER IS NOT LIABLE FOR ANY
+CLAIM, DAMAGE, OR OTHER LIABILITY ARISING FROM THE MATERIAL OR ITS USE.
+
+For commercial licensing or other permissions, contact the repository owner
+through GitHub before using the material.
