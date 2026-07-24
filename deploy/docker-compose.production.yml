@@ -26,7 +26,9 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a '$${REDIS_PASSWORD}' ping | grep PONG"]
+      # Двойные кавычки обязательны: в sh одинарные подавляют подстановку, и в
+      # redis-cli уходил литерал ${REDIS_PASSWORD} → WRONGPASS → вечный unhealthy.
+      test: ["CMD-SHELL", 'redis-cli -a "$${REDIS_PASSWORD}" ping | grep PONG']
       interval: 10s
       timeout: 5s
       retries: 10
