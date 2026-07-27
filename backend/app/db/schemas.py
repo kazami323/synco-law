@@ -109,6 +109,7 @@ class LabelSummary(BaseModel):
     actor_type: str
     actor_name: str | None = None
     actor_role: str | None = None
+    created_at: datetime
 
 
 class ContractOut(BaseModel):

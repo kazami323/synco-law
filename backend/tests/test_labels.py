@@ -45,7 +45,7 @@ async def test_set_and_list_label(client, admin_headers):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["kind"] == "approved"
-    assert body["title"] == "Утверждено"
+    assert body["title"] == "Утверждено старшим юристом"
     assert body["actor_type"] == "user"
     assert body["actor_role"] == "admin"
     assert body["note"] == "Проверил лично"
@@ -133,41 +133,44 @@ async def test_unknown_label_rejected(client, admin_headers):
     assert resp.status_code == 404
 
 
-async def test_lawyer_cannot_approve_but_can_mark_prepared(client, admin_headers):
+async def test_anyone_can_set_and_remove_any_label(client, admin_headers):
+    """По решению заказчика ставить/снимать может любой сотрудник, у которого
+    есть доступ к документу, включая снятие чужой отметки (младший юрист
+    снимает отметку, поставленную старшим/админом)."""
     lawyer_headers = await _lawyer_headers(client, admin_headers)
+    # Документ создаёт сам юрист — тогда он его видит (view_assigned), а админ
+    # видит его через view_all: оба имеют доступ к отметкам этого документа.
     contract = await _create(client, lawyer_headers, title="Документ юриста")
 
-    denied = await client.put(
+    # Рядовой юрист может проставить «Утверждено старшим юристом»
+    approved = await client.put(
         f"/api/contracts/{contract['id']}/labels/approved", headers=lawyer_headers
     )
-    assert denied.status_code == 403, "утверждать может только согласующий"
+    assert approved.status_code == 200
+    assert approved.json()["actor_role"] == "lawyer"
 
-    allowed = await client.put(
+    # Админ ставит свою отметку, а юрист её снимает — снятие чужой разрешено
+    admin_prepared = await client.put(
+        f"/api/contracts/{contract['id']}/labels/prepared", headers=admin_headers
+    )
+    assert admin_prepared.status_code == 200
+    removed = await client.delete(
         f"/api/contracts/{contract['id']}/labels/prepared", headers=lawyer_headers
     )
-    assert allowed.status_code == 200
-    assert allowed.json()["actor_role"] == "lawyer"
-    assert allowed.json()["actor_role_title"] == "юрист"
+    assert removed.status_code == 204, "младший юрист может снять чужую отметку"
 
 
-async def test_catalogue_reflects_user_rights(client, admin_headers):
+async def test_catalogue_marks_only_auto_label_as_not_settable(client, admin_headers):
     lawyer_headers = await _lawyer_headers(client, admin_headers)
 
-    admin_view = (
-        await client.get("/api/labels/catalogue", headers=admin_headers)
-    ).json()
-    lawyer_view = (
-        await client.get("/api/labels/catalogue", headers=lawyer_headers)
-    ).json()
-
-    admin_can = {item["kind"] for item in admin_view if item["can_set"]}
-    lawyer_can = {item["kind"] for item in lawyer_view if item["can_set"]}
-
-    assert "approved" in admin_can
-    assert "approved" not in lawyer_can
-    assert "prepared" in lawyer_can
-    # Автоматическую плашку не может ставить никто вручную
-    assert all(not item["can_set"] for item in admin_view if item["auto_only"])
+    for headers in (admin_headers, lawyer_headers):
+        view = (await client.get("/api/labels/catalogue", headers=headers)).json()
+        settable = {item["kind"] for item in view if item["can_set"]}
+        # Ручные отметки доступны всем
+        assert {"prepared", "approved"} <= settable
+        # Автоматическую «Проверено ИИ» вручную не поставить
+        assert all(not item["can_set"] for item in view if item["auto_only"])
+        assert "ai_reviewed" not in settable
 
 
 async def test_new_document_types_accepted(client, admin_headers):

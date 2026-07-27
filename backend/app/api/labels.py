@@ -17,10 +17,8 @@ from app.core.labels import (
     LABEL_CATALOGUE,
     is_auto_only,
     is_known_label,
-    label_permission,
     role_title,
 )
-from app.core.permissions import ROLE_PERMISSIONS
 from app.db.base import get_db
 from app.db.models import User
 from app.services.labels import describe, list_labels, remove_label, set_label
@@ -55,12 +53,10 @@ class SetLabelRequest(BaseModel):
 
 
 def _can_set(user: User, kind: str) -> bool:
-    if is_auto_only(kind):
-        return False
-    needed = label_permission(kind)
-    if needed is None:
-        return False
-    return needed in ROLE_PERMISSIONS.get(user.role, [])
+    # По решению заказчика ставить и снимать отметки может любой сотрудник,
+    # у которого есть доступ к документу (доступ проверяет get_visible_contract).
+    # Исключение — автоматическая «Проверено ИИ»: её руками не трогают.
+    return not is_auto_only(kind)
 
 
 def _serialize(label) -> LabelOut:

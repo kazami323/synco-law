@@ -15,9 +15,16 @@ interface LabelSpec {
  */
 export const LABELS: Record<string, LabelSpec> = {
   ai_reviewed: { title: "Проверено ИИ", tone: "info", autoOnly: true },
-  prepared: { title: "Подготовлено", tone: "neutral", autoOnly: false },
-  approved: { title: "Утверждено", tone: "success", autoOnly: false },
-  needs_revision: { title: "На доработке", tone: "warning", autoOnly: false },
+  prepared: {
+    title: "Подготовлено младшим юристом",
+    tone: "neutral",
+    autoOnly: false,
+  },
+  approved: {
+    title: "Утверждено старшим юристом",
+    tone: "success",
+    autoOnly: false,
+  },
 };
 
 export const ROLE_TITLES: Record<string, string> = {

@@ -38,6 +38,7 @@ export interface DocumentLabel {
   actor_type: "agent" | "user";
   actor_name: string | null;
   actor_role: string | null;
+  created_at: string;
 }
 
 export interface Contract {

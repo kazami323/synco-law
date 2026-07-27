@@ -83,6 +83,12 @@ export function DocumentLabelsPanel({
                   </Chip>
                   <span className="text-sm text-on-surface-variant truncate">
                     {labelActor(label)}
+                    {label.created_at && (
+                      <span className="opacity-70">
+                        {" · "}
+                        {new Date(label.created_at).toLocaleDateString("ru-RU")}
+                      </span>
+                    )}
                   </span>
                 </div>
                 {canRemove && (
