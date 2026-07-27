@@ -1,7 +1,15 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BadgeCheck, Gavel, ListChecks, ShieldAlert, Sparkles } from "lucide-react";
+import {
+  BadgeCheck,
+  FileCheck2,
+  Gavel,
+  ListChecks,
+  ShieldAlert,
+  Sparkles,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, apiBackgroundTask } from "@/lib/api";
 import { Button, Card, Chip, ErrorNote } from "@/components/ui";
@@ -80,11 +88,28 @@ export function AnalysisSection({
   canRun?: boolean;
 }) {
   const qc = useQueryClient();
+  const router = useRouter();
   const [error, setError] = useState("");
 
   const analysis = useQuery({
     queryKey: ["analysis", contractId],
     queryFn: () => api<AnalysisData>(`/api/contracts/${contractId}/analysis`),
+  });
+
+  // Сохранить результат анализа отдельным документом «Проверка контракта»
+  const saveReview = useMutation({
+    mutationFn: () =>
+      api<{ id: string }>(`/api/contracts/${contractId}/save-review`, {
+        method: "POST",
+      }),
+    onSuccess: (doc) => {
+      qc.invalidateQueries({ queryKey: ["contracts"] });
+      router.push(`/contracts/${doc.id}`);
+    },
+    onError: (err) =>
+      setError(
+        err instanceof Error ? err.message : "Не удалось сохранить проверку"
+      ),
   });
 
   const run = useMutation({
@@ -116,21 +141,37 @@ export function AnalysisSection({
           <Sparkles size={18} className="text-primary" />
           AI-анализ контракта
         </div>
-        {canRun && (
-          <Button
-            loading={run.isPending}
-            onClick={() => {
-              setError("");
-              run.mutate();
-            }}
-          >
-            {run.isPending
-              ? "Анализируем… (1-2 минуты)"
-              : hasResults
-                ? "Повторить анализ"
-                : "Запустить AI-анализ"}
-          </Button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {hasResults && canRun && (
+            <Button
+              variant="secondary"
+              loading={saveReview.isPending}
+              onClick={() => {
+                setError("");
+                saveReview.mutate();
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <FileCheck2 size={16} /> Сохранить как проверку
+              </span>
+            </Button>
+          )}
+          {canRun && (
+            <Button
+              loading={run.isPending}
+              onClick={() => {
+                setError("");
+                run.mutate();
+              }}
+            >
+              {run.isPending
+                ? "Анализируем… (1-2 минуты)"
+                : hasResults
+                  ? "Повторить анализ"
+                  : "Запустить AI-анализ"}
+            </Button>
+          )}
+        </div>
       </div>
 
       {error && <div className="mt-4"><ErrorNote message={error} /></div>}

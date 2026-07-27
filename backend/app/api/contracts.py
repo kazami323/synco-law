@@ -36,6 +36,7 @@ from app.core.dependencies import get_current_user, get_upload_user
 from app.core.permissions import ROLE_PERMISSIONS, require_permission
 from app.db.base import get_db
 from app.db.models import (
+    AgentResult,
     Contract,
     Project,
     ContractDeadline,
@@ -62,6 +63,8 @@ from app.services.deadlines import add_parsed_deadlines, days_left
 from app.services.notifications import create_deadline_notifications, deliver
 from app.services import search as search_service
 from app.services.ai_usage import enforce_ai_access, record_ai_usage
+from app.services.labels import set_label
+from app.services.review_document import render_review
 from app.services.signature import (
     contract_hash,
     stub_signature,
@@ -153,6 +156,7 @@ async def _create_contract_row(
     file_path: str | None,
     ip: str | None,
     project_id: uuid.UUID | None = None,
+    parse_deadlines: bool = True,
 ) -> Contract:
     if project_id is not None:
         project_exists = (
@@ -194,7 +198,8 @@ async def _create_contract_row(
             created_by=user.id,
         )
     )
-    await add_parsed_deadlines(db, contract)
+    if parse_deadlines:
+        await add_parsed_deadlines(db, contract)
     pending_deliveries = await create_deadline_notifications(
         db, organization_id=user.organization_id
     )
@@ -786,3 +791,72 @@ async def download_original(
     if content_length is not None:
         headers["Content-Length"] = str(content_length)
     return StreamingResponse(_iter(), media_type=content_type, headers=headers)
+
+
+@router.post(
+    "/{contract_id}/save-review",
+    response_model=ContractDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+async def save_review_as_document(
+    contract_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("create")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Сохраняет результат AI-анализа договора отдельным документом проекта.
+
+    Заказчик считает проверку контракта самостоятельным документом: берём
+    последний анализ, разворачиваем в читаемый текст и кладём в тот же проект
+    документом типа contract_review с автоматической плашкой «Проверено ИИ».
+    """
+    source = await get_visible_contract(contract_id, user, db)
+
+    rows = await db.execute(
+        select(AgentResult)
+        .where(
+            AgentResult.contract_id == source.id,
+            AgentResult.result_type == "analysis",
+        )
+        .order_by(AgentResult.created_at)
+    )
+    analysis: dict[str, dict] = {}
+    for row in rows.scalars():
+        if row.result_data:
+            analysis[row.agent_name] = row.result_data
+    if not analysis:
+        raise HTTPException(
+            status_code=400, detail="Сначала запустите AI-анализ этого договора"
+        )
+
+    review = await _create_contract_row(
+        db,
+        user,
+        title=f"Проверка: {source.title}",
+        contract_type=ContractType.CONTRACT_REVIEW.value,
+        counterparty=source.counterparty,
+        content=render_review(source.title, analysis),
+        amount=None,
+        currency=source.currency,
+        file_path=None,
+        ip=_client_ip(request),
+        project_id=source.project_id,
+        parse_deadlines=False,
+    )
+
+    # Документ — продукт ИИ: переносим оценку риска и вешаем плашку «Проверено ИИ».
+    review.risk_score = source.risk_score
+    await set_label(
+        db,
+        review.id,
+        "ai_reviewed",
+        agent_name="risk_agent",
+        note=(
+            f"Оценка риска: {source.risk_score}"
+            if source.risk_score is not None
+            else None
+        ),
+    )
+    await db.commit()
+    await db.refresh(review)
+    return review
