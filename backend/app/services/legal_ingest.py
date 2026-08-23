@@ -17,6 +17,9 @@ class IngestResult:
     document: LegalDocument
     articles_count: int
     created: bool
+    # Редакция НПА изменилась: по этому признаку помечаются шаблоны, которые
+    # нужно перепроверить (ТЗ, раздел 6).
+    revision_changed: bool = False
 
 
 async def upsert_legal_document(
@@ -33,6 +36,7 @@ async def upsert_legal_document(
     ).scalar_one_or_none()
 
     created = existing is None
+    previous_revision = existing.current_revision_date if existing else None
     document = existing or LegalDocument(
         source=parsed.source,
         source_id=parsed.source_id,
@@ -81,4 +85,7 @@ async def upsert_legal_document(
         document=document,
         articles_count=len(parsed.articles),
         created=created,
+        revision_changed=(
+            not created and previous_revision != parsed.current_revision_date
+        ),
     )

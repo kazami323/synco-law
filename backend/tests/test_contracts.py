@@ -147,7 +147,7 @@ async def test_lawyer_sees_only_own_contracts(client, admin_headers):
     assert listing["total"] == 2
 
 
-async def test_archive_requires_delete_permission(client, admin_headers):
+async def test_archive_requires_archive_permission(client, admin_headers):
     created = await _create(client, admin_headers)
 
     resp = await client.post(
@@ -166,11 +166,12 @@ async def test_archive_requires_delete_permission(client, admin_headers):
     )
     head_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
-    # у head нет права delete
+    # ТЗ (раздел 2) отдаёт статус «В архиве» юристу, поэтому архивация
+    # доступна и руководителю: право здесь `archive`, а не `delete`.
     resp = await client.delete(
         f"/api/contracts/{created['id']}", headers=head_headers
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
     resp = await client.delete(
         f"/api/contracts/{created['id']}", headers=admin_headers

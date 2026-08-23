@@ -130,10 +130,10 @@ async def search_archive(
     db: AsyncSession = Depends(get_db),
 ):
     if user.organization_id is None:
-        raise HTTPException(status_code=400, detail="Create an organization first")
+        raise HTTPException(status_code=400, detail="Сначала создайте организацию")
     perms = ROLE_PERMISSIONS.get(user.role, [])
     if "view_all" not in perms and "view_assigned" not in perms:
-        raise HTTPException(status_code=403, detail="Permission denied")
+        raise HTTPException(status_code=403, detail="Недостаточно прав для этого действия")
     created_by = None if "view_all" in perms else user.id
 
     common = dict(

@@ -21,7 +21,9 @@ from app.db.models import (
 from app.services.notifications import create_deadline_notifications
 from app.services.signature import contract_hash, stub_signature
 
-DEMO_EMAIL = "demo@legal.local"
+# Не .local и не .test: pydantic EmailStr отклоняет зарезервированные
+# домены, и демо-аккаунт с таким адресом невозможно было залогинить.
+DEMO_EMAIL = "demo@legal.uz"
 DEMO_USERNAME = "demo_admin"
 DEMO_PASSWORD = "demo12345"
 DEMO_ORG = "Demo Legal Department"

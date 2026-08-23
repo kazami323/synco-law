@@ -1,6 +1,9 @@
 import {
+  BadgeCheck,
   Briefcase,
   ClipboardCheck,
+  FilePlus,
+  Hammer,
   FileText,
   Handshake,
   KeyRound,
@@ -8,6 +11,7 @@ import {
   Scale,
   ShieldAlert,
   ShoppingCart,
+  Truck,
   type LucideIcon,
 } from "lucide-react";
 import { Sparkles, UserCheck } from "lucide-react";
@@ -16,10 +20,14 @@ import { CONTRACT_TYPES, type DocumentLabel } from "@/lib/types";
 import { labelActor, labelSpec } from "@/lib/labels";
 
 const TYPE_ICONS: Record<string, LucideIcon> = {
+  supply: Truck,
   purchase: ShoppingCart,
   lease: KeyRound,
   service: Handshake,
+  contracting: Hammer,
   nda: Lock,
+  license: BadgeCheck,
+  amendment: FilePlus,
   employment: Briefcase,
   risk_map: ShieldAlert,
   legal_opinion: Scale,
@@ -51,15 +59,25 @@ export const STATUS_LABELS: Record<
   string,
   { label: string; tone: "success" | "warning" | "error" | "info" | "neutral" }
 > = {
+  // Зеркало backend/app/core/statuses.py (ТЗ, раздел 2)
   draft: { label: "Черновик", tone: "neutral" },
+  generated: { label: "Сгенерирован", tone: "info" },
   analyzing: { label: "На проверке", tone: "info" },
   analyzed: { label: "Проверен", tone: "info" },
-  approved: { label: "Согласован", tone: "success" },
-  approved_finance: { label: "Согласован (финансы)", tone: "success" },
-  ready_to_sign: { label: "К подписанию", tone: "warning" },
+  approved: { label: "Подтверждён юристом", tone: "success" },
+  needs_revision: { label: "На доработке", tone: "warning" },
+  approved_finance: { label: "Согласован финансами", tone: "success" },
+  ready_to_sign: { label: "Финальный", tone: "success" },
   signed: { label: "Подписан", tone: "success" },
   archived: { label: "В архиве", tone: "neutral" },
 };
+
+/** В этих статусах текст документа править нельзя (ТЗ, раздел 2). */
+export const LOCKED_STATUSES = new Set(["ready_to_sign", "signed", "archived"]);
+
+export function isLocked(status: string): boolean {
+  return LOCKED_STATUSES.has(status);
+}
 
 export function StatusChip({ status }: { status: string }) {
   const st = STATUS_LABELS[status] ?? { label: status, tone: "neutral" as const };

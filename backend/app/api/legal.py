@@ -23,7 +23,7 @@ async def search_law(
     db: AsyncSession = Depends(get_db),
 ):
     if user.organization_id is None:
-        raise HTTPException(status_code=400, detail="Create an organization first")
+        raise HTTPException(status_code=400, detail="Сначала создайте организацию")
     items = await search_legal_articles(db, q=q, limit=limit, language=language)
     return {"total": len(items), "items": items}
 
@@ -34,7 +34,7 @@ async def list_legal_documents(
     db: AsyncSession = Depends(get_db),
 ):
     if user.organization_id is None:
-        raise HTTPException(status_code=400, detail="Create an organization first")
+        raise HTTPException(status_code=400, detail="Сначала создайте организацию")
     rows = (
         await db.execute(
             select(LegalDocument, func.count(LegalArticle.id))

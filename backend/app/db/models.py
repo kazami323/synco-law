@@ -39,36 +39,88 @@ class Role(str, enum.Enum):
     LAWYER = "lawyer"
     COMPLIANCE = "compliance"
     FINANCE = "finance"
+    OBSERVER = "observer"  # Наблюдатель по ТЗ: смотрит и комментирует
     EXTERNAL = "external"
 
 
 class ContractStatus(str, enum.Enum):
-    DRAFT = "draft"
-    ANALYZING = "analyzing"
-    ANALYZED = "analyzed"
-    APPROVED = "approved"
+    """Статусы документа по ТЗ «Правовой движок», раздел 2.
+
+    Значения в БД оставлены прежними там, где смысл совпал (analyzing =
+    «На проверке», analyzed = «Проверен», approved = «Подтверждён юристом»,
+    ready_to_sign = «Финальный»), чтобы не переписывать исторические данные.
+    approved_finance и signed — надстройка проекта над ТЗ (финансовое
+    согласование и E-IMZO).
+    """
+
+    DRAFT = "draft"  # Черновик
+    GENERATED = "generated"  # Сгенерирован ИИ, проверки не проводились
+    ANALYZING = "analyzing"  # На проверке
+    ANALYZED = "analyzed"  # Проверен
+    APPROVED = "approved"  # Подтверждён юристом
+    NEEDS_REVISION = "needs_revision"  # На доработке
     APPROVED_FINANCE = "approved_finance"
-    READY_TO_SIGN = "ready_to_sign"
+    READY_TO_SIGN = "ready_to_sign"  # Финальный: редактирование заблокировано
     SIGNED = "signed"
-    ARCHIVED = "archived"
+    ARCHIVED = "archived"  # В архиве
+
+
+# В этих статусах текст документа править нельзя (ТЗ: «Финальный — готов к
+# подписанию, редактирование заблокировано»).
+LOCKED_STATUSES: frozenset[str] = frozenset(
+    {
+        ContractStatus.READY_TO_SIGN.value,
+        ContractStatus.SIGNED.value,
+        ContractStatus.ARCHIVED.value,
+    }
+)
 
 
 class ContractType(str, enum.Enum):
     """Тип документа в проекте.
 
-    Кроме договоров в проекте лежат продукты работы юриста и агентов:
-    риск-карта, правовое заключение, проверка контракта.
+    Каталог типов по ТЗ (раздел 3.1) плюс продукты работы юриста и агентов:
+    риск-карта, правовое заключение, проверка контракта. Человеческие названия
+    и обязательные блоки — в app/core/document_types.py.
     """
 
-    PURCHASE = "purchase"
-    LEASE = "lease"
-    SERVICE = "service"
+    SUPPLY = "supply"  # договор поставки
+    SERVICE = "service"  # оказание услуг
+    CONTRACTING = "contracting"  # подряд
+    LEASE = "lease"  # аренда
+    PURCHASE = "purchase"  # купля-продажа
+    EMPLOYMENT = "employment"  # трудовой
     NDA = "nda"
-    EMPLOYMENT = "employment"
+    LICENSE = "license"  # лицензионный
+    AMENDMENT = "amendment"  # дополнительное соглашение
     RISK_MAP = "risk_map"
     LEGAL_OPINION = "legal_opinion"
     CONTRACT_REVIEW = "contract_review"
     OTHER = "other"
+
+
+class ClauseVerdict(str, enum.Enum):
+    """Вердикт Модуля 1 по пункту. Закрытый список из ТЗ, раздел 4."""
+
+    COMPLIANT = "compliant"  # соответствует
+    CONFLICTS = "conflicts"  # противоречит
+    ATTENTION = "attention"  # требует внимания
+    NO_NORM = "no_norm"  # норма не найдена
+
+
+class ClauseDecisionAction(str, enum.Enum):
+    """Решение юриста по пункту (ТЗ, раздел 4, Модуль 1)."""
+
+    CONFIRM = "confirm"  # подтвердить
+    EDIT = "edit"  # изменить
+    COMMENT = "comment"  # комментарий
+    DEFER = "defer"  # отложить
+
+
+class ReviewModule(str, enum.Enum):
+    CLAUSES = "clauses"  # Модуль 1
+    LOGIC = "logic"  # Модуль 2
+    RISKS = "risks"  # Модуль 3
 
 
 class Organization(Base):
@@ -113,6 +165,10 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     mfa_secret_encrypted: Mapped[str | None] = mapped_column(Text)
+    # Секрет-кандидат при перенастройке MFA. Пока пользователь не подтвердил
+    # его кодом, действующий секрет и признак mfa_enabled не трогаются —
+    # иначе один запрос к /mfa/setup молча снимал бы второй фактор.
+    mfa_pending_secret_encrypted: Mapped[str | None] = mapped_column(Text)
     # Telegram-уведомления: chat_id после привязки, link_code — одноразовый код
     telegram_chat_id: Mapped[str | None] = mapped_column(String(64))
     telegram_link_code: Mapped[str | None] = mapped_column(String(64), index=True)
@@ -180,6 +236,10 @@ class Project(Base):
     status: Mapped[str] = mapped_column(
         String(32), server_default="active", index=True
     )  # active | closed
+    # Общий контекст проекта по ТЗ (раздел 1): стороны, суммы, сроки.
+    # Наследуется документами при генерации, чтобы юрист не вводил одно и то же
+    # в каждый договор. Структура — app/core/project_context.py.
+    context: Mapped[dict | None] = mapped_column(JSONB)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id")
     )
@@ -191,6 +251,40 @@ class Project(Base):
     )
 
     contracts: Mapped[list["Contract"]] = relationship(back_populates="project")
+    members: Mapped[list["ProjectMember"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+
+
+class ProjectMember(Base):
+    """Участник проекта с правом доступа (ТЗ, раздел 1).
+
+    Ограничивает доступ внутри организации: если у проекта есть хотя бы один
+    участник, видеть его могут только участники (плюс роли с view_all).
+    access: read — просмотр, comment — просмотр и комментарии, write — работа.
+    """
+
+    __tablename__ = "project_members"
+    __table_args__ = (UniqueConstraint("project_id", "user_id", name="uq_project_member"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    access: Mapped[str] = mapped_column(String(16), server_default="write")
+    added_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+    project: Mapped[Project] = relationship(back_populates="members")
 
 
 class Contract(Base):
@@ -250,6 +344,21 @@ class Contract(Base):
     # сериализации ответа (в т.ч. сразу после создания документа).
     labels: Mapped[list["DocumentLabel"]] = relationship(
         back_populates="contract", cascade="all, delete-orphan", lazy="selectin"
+    )
+    clauses: Mapped[list["Clause"]] = relationship(
+        back_populates="contract",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    review_runs: Mapped[list["ReviewRun"]] = relationship(
+        back_populates="contract",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    comments: Mapped[list["DocumentComment"]] = relationship(
+        back_populates="contract",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     deadlines: Mapped[list["ContractDeadline"]] = relationship(
         back_populates="contract", cascade="all, delete-orphan"
@@ -569,3 +678,319 @@ class LegalArticle(Base):
     )
 
     document: Mapped[LegalDocument] = relationship(back_populates="articles")
+
+
+# --------------------------------------------------------------------------
+# Правовой движок: работа по пунктам (ТЗ, раздел 4)
+#
+# Единица работы — пункт, а не документ целиком. Документ режется на дерево
+# раздел → пункт → подпункт; к каждому пункту привязываются найденные нормы,
+# вердикт системы и решение юриста.
+# --------------------------------------------------------------------------
+
+
+class Clause(Base):
+    """Структурная единица документа: раздел, пункт или подпункт."""
+
+    __tablename__ = "clauses"
+    __table_args__ = (
+        UniqueConstraint("contract_id", "anchor", name="uq_clause_anchor"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id", ondelete="CASCADE"), index=True
+    )
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clauses.id", ondelete="CASCADE"), index=True
+    )
+    # Стабильный якорь пункта: нумерация из текста («5.4») либо сгенерированный
+    # суррогат («§3»). По нему решения юриста переносятся между версиями.
+    anchor: Mapped[str] = mapped_column(String(64), index=True)
+    number: Mapped[str | None] = mapped_column(String(64))
+    level: Mapped[int] = mapped_column(Integer, server_default="1")  # 1 раздел, 2 пункт
+    title: Mapped[str | None] = mapped_column(String(1024))
+    content: Mapped[str] = mapped_column(Text)
+    # Хеш нормализованного текста: если текст не менялся, решение юриста
+    # переносится в новую версию автоматически, иначе требует пересмотра.
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    position: Mapped[int] = mapped_column(Integer, server_default="0", index=True)
+    # Границы пункта в тексте документа. Правка пункта вставляется по ним на
+    # своё место: пересборка документа из пунктов теряла «Раздел», римскую
+    # нумерацию и маркеры подпунктов.
+    start_offset: Mapped[int] = mapped_column(Integer, server_default="0")
+    end_offset: Mapped[int] = mapped_column(Integer, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=datetime.utcnow
+    )
+
+    contract: Mapped[Contract] = relationship(back_populates="clauses")
+    children: Mapped[list["Clause"]] = relationship(
+        back_populates="parent", cascade="all, delete-orphan", passive_deletes=True
+    )
+    parent: Mapped["Clause | None"] = relationship(
+        back_populates="children", remote_side="Clause.id"
+    )
+    checks: Mapped[list["ClauseCheck"]] = relationship(
+        back_populates="clause", cascade="all, delete-orphan", passive_deletes=True
+    )
+    decisions: Mapped[list["ClauseDecision"]] = relationship(
+        back_populates="clause", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class ReviewRun(Base):
+    """Один запуск модуля проверки. Модули запускаются по отдельности или все
+    сразу (ТЗ, раздел 4), поэтому у каждого свой прогон со своим статусом."""
+
+    __tablename__ = "review_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id", ondelete="CASCADE"), index=True
+    )
+    module: Mapped[str] = mapped_column(String(16), index=True)  # clauses|logic|risks
+    status: Mapped[str] = mapped_column(
+        String(16), server_default="running", index=True
+    )  # running | done | failed
+    # Модуль 3 без стороны не запускается: сторона меняет всю оптику анализа.
+    party_side: Mapped[str | None] = mapped_column(String(256))
+    clauses_total: Mapped[int] = mapped_column(Integer, server_default="0")
+    findings_total: Mapped[int] = mapped_column(Integer, server_default="0")
+    # Резюме Модуля 3: «что критично поправить до подписания» (ТЗ, раздел 4).
+    # Модель его возвращала, но оно нигде не сохранялось.
+    summary: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    started_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), index=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    contract: Mapped[Contract] = relationship(back_populates="review_runs")
+
+
+class ClauseCheck(Base):
+    """Результат сверки пункта с правовой базой (Модуль 1).
+
+    sources хранит снапшот норм на дату проверки: номер статьи, текст, ссылку
+    и редакцию. Снапшот, а не ссылка на legal_articles, — потому что ТЗ требует
+    воспроизводимости результата после обновления законодательства.
+    """
+
+    __tablename__ = "clause_checks"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    clause_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clauses.id", ondelete="CASCADE"), index=True
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("review_runs.id", ondelete="SET NULL"), index=True
+    )
+    verdict: Mapped[str] = mapped_column(String(16), index=True)
+    rationale: Mapped[str | None] = mapped_column(Text)
+    suggested_text: Mapped[str | None] = mapped_column(Text)
+    sources: Mapped[list | None] = mapped_column(JSONB)
+    # Хеш текста пункта на момент проверки. Без него вердикт не устаревал
+    # вместе с текстом: юрист правил пункт и продолжал видеть «соответствует»,
+    # вынесенное по прежней редакции. У решения юриста такой хеш был с самого
+    # начала (ClauseDecision.clause_hash), у вердикта — нет.
+    clause_hash: Mapped[str | None] = mapped_column(String(64))
+    checked_on: Mapped[date] = mapped_column(Date, server_default=text("CURRENT_DATE"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), index=True
+    )
+
+    clause: Mapped[Clause] = relationship(back_populates="checks")
+
+
+class ClauseDecision(Base):
+    """Решение юриста по пункту: подтвердить / изменить / комментарий /
+    отложить. Фиксируется с автором и временем — требование ТЗ."""
+
+    __tablename__ = "clause_decisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    clause_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clauses.id", ondelete="CASCADE"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(16), index=True)
+    comment: Mapped[str | None] = mapped_column(Text)
+    previous_text: Mapped[str | None] = mapped_column(Text)
+    new_text: Mapped[str | None] = mapped_column(Text)
+    # Текст пункта на момент решения: если пункт потом поменяли, подтверждение
+    # больше не действует и юрист должен пройти по нему заново.
+    clause_hash: Mapped[str | None] = mapped_column(String(64))
+    # Актуально только последнее решение по пункту; прошлые остаются историей.
+    is_current: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("true"), index=True
+    )
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    decided_by_name: Mapped[str | None] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), index=True
+    )
+
+    clause: Mapped[Clause] = relationship(back_populates="decisions")
+
+
+class LogicFinding(Base):
+    """Расхождение внутри документа (Модуль 2).
+
+    clause_anchors — минимум два конфликтующих пункта: ТЗ требует показывать их
+    рядом, находка с одним пунктом бессмысленна.
+    """
+
+    __tablename__ = "logic_findings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id", ondelete="CASCADE"), index=True
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("review_runs.id", ondelete="SET NULL"), index=True
+    )
+    category: Mapped[str] = mapped_column(String(32), index=True)
+    description: Mapped[str] = mapped_column(Text)
+    suggestion: Mapped[str | None] = mapped_column(Text)
+    clause_anchors: Mapped[list | None] = mapped_column(JSONB)
+    detected_by: Mapped[str] = mapped_column(String(16), server_default="rule")
+    status: Mapped[str] = mapped_column(
+        String(16), server_default="open", index=True
+    )  # open | accepted | rejected | fixed
+    resolution_note: Mapped[str | None] = mapped_column(Text)
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), index=True
+    )
+
+
+class RiskFinding(Base):
+    """Риск из Модуля 3 — с уровнем, последствиями и предложением."""
+
+    __tablename__ = "risk_findings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id", ondelete="CASCADE"), index=True
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("review_runs.id", ondelete="SET NULL"), index=True
+    )
+    category: Mapped[str] = mapped_column(String(32), index=True)
+    level: Mapped[str] = mapped_column(String(16), index=True)  # high | medium | low
+    description: Mapped[str] = mapped_column(Text)
+    consequence: Mapped[str | None] = mapped_column(Text)  # последствия на практике
+    mitigation: Mapped[str | None] = mapped_column(Text)  # предложение по устранению
+    clause_anchors: Mapped[list | None] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(16), server_default="open", index=True)
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), index=True
+    )
+
+
+class DocumentComment(Base):
+    """Комментарий к документу или пункту.
+
+    Нужен роли «Наблюдатель» (ТЗ, раздел 7): смотреть и комментировать, но не
+    менять статусы.
+    """
+
+    __tablename__ = "document_comments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id", ondelete="CASCADE"), index=True
+    )
+    clause_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clauses.id", ondelete="CASCADE"), index=True
+    )
+    # Колонка называется text и перекрывает импортированный sqlalchemy.text
+    # внутри тела класса — ниже по классу используется алиас sql_text.
+    text: Mapped[str] = mapped_column(Text)
+    author_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    author_name: Mapped[str | None] = mapped_column(String(256))
+    author_role: Mapped[str | None] = mapped_column(String(32))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=sql_text("now()"), index=True
+    )
+
+    contract: Mapped[Contract] = relationship(back_populates="comments")
+
+
+class DocumentTemplate(Base):
+    """Шаблон документа (ТЗ, раздел 6).
+
+    Хранит метаданные актуальности: когда проверялся на соответствие
+    законодательству и кто из юристов его верифицировал.
+    """
+
+    __tablename__ = "document_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(512))
+    doc_type: Mapped[str] = mapped_column(String(64), index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[str] = mapped_column(Text)
+    # Дата последней проверки шаблона на соответствие законодательству.
+    actualized_at: Mapped[date | None] = mapped_column(Date)
+    verified_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    verified_by_name: Mapped[str | None] = mapped_column(String(256))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Проставляется legal_refresh, когда затронутый шаблоном НПА обновился.
+    stale_reason: Mapped[str | None] = mapped_column(Text)
+    stale_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_contract_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id", ondelete="SET NULL")
+    )
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), index=True
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    created_by_name: Mapped[str | None] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=datetime.utcnow
+    )

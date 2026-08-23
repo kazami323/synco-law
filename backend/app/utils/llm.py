@@ -300,7 +300,12 @@ def extract_json(text: str) -> dict:
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end <= start:
-        raise ValueError(f"Модель не вернула JSON: {text[:200]}")
+        # Ответ модели пересказывает текст договора, поэтому в сообщение об
+        # ошибке он не попадает: оттуда он уходит и в лог, и в колонку
+        # review_runs.error, и на экран юриста. Для диагностики достаточно
+        # длины ответа.
+        logger.warning("Модель вернула ответ без JSON: %s символов", len(text))
+        raise ValueError("Модель вернула ответ не в формате JSON")
     return json.loads(text[start : end + 1])
 
 

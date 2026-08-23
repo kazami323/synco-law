@@ -6,8 +6,10 @@ external) — только созданные самим пользовател�
 
 import asyncio
 import csv
+import logging
 import hashlib
 import io
+import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
@@ -27,7 +29,7 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -37,17 +39,25 @@ from app.core.permissions import ROLE_PERMISSIONS, require_permission
 from app.db.base import get_db
 from app.db.models import (
     AgentResult,
+    Clause,
     Contract,
-    Project,
     ContractDeadline,
+    ContractStatus,
     ContractType,
     ContractVersion,
+    DocumentComment,
+    LogicFinding,
+    Project,
+    RiskFinding,
     SignRequest,
     User,
     WorkflowState,
 )
 from app.db.schemas import (
     ContractCreate,
+    DuplicateContractIn,
+    VersionDiffOut,
+    VersionRestoreIn,
     ContractDeadlineCreate,
     ContractDeadlineOut,
     ContractDetail,
@@ -59,6 +69,12 @@ from app.db.schemas import (
     SignRequestOut,
     UpcomingDeadlineOut,
 )
+from app.core.statuses import is_locked
+from app.services import clauses as clause_service
+from app.services import export_document
+from app.services import project_access
+from app.services import review as review_service
+from app.services import versions as versions_service
 from app.services.deadlines import add_parsed_deadlines, days_left
 from app.services.notifications import create_deadline_notifications, deliver
 from app.services import search as search_service
@@ -77,6 +93,8 @@ from app.utils.storage import open_download_stream, upload_file_async
 from app.utils.upload_security import UploadSecurityError, secure_upload
 
 router = APIRouter(prefix="/api/contracts", tags=["contracts"])
+
+logger = logging.getLogger("app.contracts")
 
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 VALID_TYPES = {t.value for t in ContractType}
@@ -103,11 +121,41 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+def _ensure_unlocked(contract: Contract) -> None:
+    """ТЗ, раздел 2: в статусе «Финальный» редактирование заблокировано.
+
+    Проверка обязана быть на бэкенде: спрятанная кнопка в интерфейсе не мешает
+    отправить PUT напрямую, а подписывают ровно тот текст, который лежит в БД.
+    """
+    if is_locked(contract.status):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Документ в статусе «Финальный»: редактирование заблокировано. "
+                "Верните его на доработку, чтобы внести правки."
+            ),
+        )
+
+
+async def ensure_no_running_review(db: AsyncSession, contract: Contract) -> None:
+    """Правка во время идущей проверки роняла прогон и вешала документ.
+
+    Фоновая задача держит в памяти пункты, а пересборка удаляет их строки:
+    следующий же flush падал на внешнем ключе, прогон навсегда оставался
+    «running», и статус документа не выходил из «На проверке».
+    """
+    if await review_service.has_running_review(db, contract.id):
+        raise HTTPException(
+            status_code=409,
+            detail="Идёт проверка документа. Дождитесь её окончания и повторите.",
+        )
+
+
 def _require_org(user: User) -> uuid.UUID:
     if user.organization_id is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Create an organization first",
+            detail="Сначала создайте организацию",
         )
     return user.organization_id
 
@@ -133,14 +181,21 @@ async def get_visible_contract(
     result = await db.execute(query)
     contract = result.scalar_one_or_none()
     if contract is None:
-        raise HTTPException(status_code=404, detail="Contract not found")
+        raise HTTPException(status_code=404, detail="Документ не найден")
+
+    # Проект с назначенными участниками закрыт для остальных (ТЗ, раздел 1).
+    # 404, а не 403: существование чужого документа подтверждать нельзя.
+    if contract.project_id is not None:
+        hidden = await project_access.hidden_project_ids(db, user)
+        if contract.project_id in hidden:
+            raise HTTPException(status_code=404, detail="Документ не найден")
 
     perms = ROLE_PERMISSIONS.get(user.role, [])
     if "view_all" in perms:
         return contract
     if "view_assigned" in perms and contract.created_by == user.id:
         return contract
-    raise HTTPException(status_code=403, detail="Permission denied")
+    raise HTTPException(status_code=403, detail="Недостаточно прав для этого действия")
 
 
 async def _create_contract_row(
@@ -157,6 +212,7 @@ async def _create_contract_row(
     ip: str | None,
     project_id: uuid.UUID | None = None,
     parse_deadlines: bool = True,
+    ai_generated: bool = False,
 ) -> Contract:
     if project_id is not None:
         project_exists = (
@@ -168,11 +224,11 @@ async def _create_contract_row(
             )
         ).scalar_one_or_none()
         if project_exists is None:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail="Проект не найден")
     if contract_type not in VALID_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid contract_type. Allowed: {sorted(VALID_TYPES)}",
+            detail=f"Неизвестный тип документа. Допустимы: {sorted(VALID_TYPES)}",
         )
     contract = Contract(
         organization_id=user.organization_id,
@@ -184,6 +240,13 @@ async def _create_contract_row(
         file_path=file_path,
         amount=amount,
         currency=currency,
+        # ТЗ, раздел 3.1, шаг 4: текст, собранный ИИ, заводится как
+        # «Сгенерирован» — это не то же самое, что черновик, начатый вручную.
+        status=(
+            ContractStatus.GENERATED.value
+            if ai_generated
+            else ContractStatus.DRAFT.value
+        ),
         created_by=user.id,
     )
     db.add(contract)
@@ -241,6 +304,7 @@ async def create_contract(
         file_path=None,
         ip=_client_ip(request),
         project_id=data.project_id,
+        ai_generated=data.ai_generated,
     )
 
 
@@ -261,7 +325,7 @@ async def create_contract_from_file(
 ):
     """Создать контракт из файла PDF/DOCX/TXT: текст извлекается автоматически."""
     if "create" not in ROLE_PERMISSIONS.get(user.role, []):
-        raise HTTPException(status_code=403, detail="Permission denied")
+        raise HTTPException(status_code=403, detail="Недостаточно прав для этого действия")
     org_id = _require_org(user)
 
     try:
@@ -279,7 +343,7 @@ async def create_contract_from_file(
 
     file_path = await upload_file_async(data, filename, org_id)
 
-    return await _create_contract_row(
+    contract = await _create_contract_row(
         db,
         user,
         title=title,
@@ -292,6 +356,25 @@ async def create_contract_from_file(
         ip=_client_ip(request),
         project_id=project_id,
     )
+
+    # ТЗ, 3.2: «система разбирает текст в структуру и переводит документ сразу
+    # в очередь проверки». Разбивка детерминированная и не требует ни ключа
+    # API, ни токенов, поэтому делается здесь: входящий договор от контрагента
+    # открывается уже разобранным на пункты.
+    #
+    # Сами модули автоматически не запускаются намеренно: Модуль 3 без
+    # указанной стороны не имеет смысла, а тратить дневную квоту токенов
+    # организации на каждую загрузку — решение юриста, а не системы.
+    if contract.content and contract.content.strip():
+        try:
+            await clause_service.rebuild_clauses(db, contract)
+            await db.commit()
+        except Exception:  # noqa: BLE001 - загрузка важнее разбивки
+            await db.rollback()
+            logger.exception("Не удалось разобрать загруженный документ %s", contract.id)
+        await db.refresh(contract)
+
+    return contract
 
 
 @router.get("/", response_model=ContractListResponse)
@@ -308,11 +391,16 @@ async def list_contracts(
     org_id = _require_org(user)
     perms = ROLE_PERMISSIONS.get(user.role, [])
     if "view_all" not in perms and "view_assigned" not in perms:
-        raise HTTPException(status_code=403, detail="Permission denied")
+        raise HTTPException(status_code=403, detail="Недостаточно прав для этого действия")
 
     query = select(Contract).where(Contract.organization_id == org_id)
     if "view_all" not in perms:
         query = query.where(Contract.created_by == user.id)
+    hidden = await project_access.hidden_project_ids(db, user)
+    if hidden:
+        query = query.where(
+            or_(Contract.project_id.is_(None), Contract.project_id.not_in(hidden))
+        )
     if status_filter:
         query = query.where(Contract.status == status_filter)
     if project_id is not None:
@@ -347,7 +435,7 @@ async def export_registry_csv(
     org_id = _require_org(user)
     perms = ROLE_PERMISSIONS.get(user.role, [])
     if "view_all" not in perms and "view_assigned" not in perms:
-        raise HTTPException(status_code=403, detail="Permission denied")
+        raise HTTPException(status_code=403, detail="Недостаточно прав для этого действия")
 
     query = select(Contract).where(Contract.organization_id == org_id)
     if "view_all" not in perms:
@@ -406,7 +494,7 @@ async def list_upcoming_deadlines(
     org_id = _require_org(user)
     perms = ROLE_PERMISSIONS.get(user.role, [])
     if "view_all" not in perms and "view_assigned" not in perms:
-        raise HTTPException(status_code=403, detail="Permission denied")
+        raise HTTPException(status_code=403, detail="Недостаточно прав для этого действия")
 
     today = date.today()
     window_end = today + timedelta(days=7)
@@ -449,7 +537,7 @@ async def request_signature(
     if contract.status != "ready_to_sign":
         raise HTTPException(
             status_code=409,
-            detail="Contract must be ready_to_sign before E-IMZO signing",
+            detail="Подписать можно только документ в статусе «Финальный»",
         )
 
     digest = contract_hash(contract)
@@ -485,7 +573,7 @@ async def confirm_signature(
     if contract.status != "ready_to_sign":
         raise HTTPException(
             status_code=409,
-            detail="Contract must be ready_to_sign before E-IMZO signing",
+            detail="Подписать можно только документ в статусе «Финальный»",
         )
 
     query = select(SignRequest).where(
@@ -497,20 +585,20 @@ async def confirm_signature(
     query = query.order_by(SignRequest.created_at.desc()).limit(1).with_for_update()
     sign_request = (await db.execute(query)).scalar_one_or_none()
     if sign_request is None:
-        raise HTTPException(status_code=404, detail="Pending sign request not found")
+        raise HTTPException(status_code=404, detail="Запрос на подписание не найден")
 
     digest = contract_hash(contract)
     if sign_request.contract_hash != digest:
         raise HTTPException(
             status_code=409,
-            detail="Contract changed after sign request. Create a new sign request.",
+            detail="Документ изменился после запроса подписи. Запросите подписание заново.",
         )
 
     is_real_signature = bool(data and data.signature)
     if not is_real_signature and not settings.ALLOW_STUB_SIGNATURES:
         raise HTTPException(
             status_code=400,
-            detail="E-IMZO PKCS#7 signature is required",
+            detail="Нужна подпись E-IMZO в формате PKCS#7",
         )
     if is_real_signature:
         # Реальный PKCS#7 от клиента E-IMZO; при настроенном DSV — проверяем
@@ -664,11 +752,16 @@ async def update_contract(
 ):
     """Обновить контракт; изменение текста создаёт новую версию."""
     contract = await get_visible_contract(contract_id, user, db, for_update=True)
+    _ensure_unlocked(contract)
+    # Откат пересобирает дерево пунктов, а фоновый прогон держит в памяти
+    # старые строки: их удаление роняет прогон на внешнем ключе.
+    await ensure_no_running_review(db, contract)
+    await ensure_no_running_review(db, contract)
 
     updates = data.model_dump(exclude_unset=True)
     changes_description = updates.pop("changes_description", None)
     if not updates:
-        raise HTTPException(status_code=400, detail="Nothing to update")
+        raise HTTPException(status_code=400, detail="Нечего сохранять: изменений нет")
 
     content_changed = (
         "content" in updates and updates["content"] != contract.content
@@ -696,11 +789,21 @@ async def update_contract(
         )
 
     pending = []
+    if content_changed and contract.status in (
+        ContractStatus.APPROVED.value,
+        ContractStatus.APPROVED_FINANCE.value,
+    ):
+        contract.status = ContractStatus.NEEDS_REVISION.value
+
     if content_changed:
         await add_parsed_deadlines(db, contract)
         pending = await create_deadline_notifications(
             db, organization_id=user.organization_id
         )
+        # Пункты пересобираются сразу: иначе юрист продолжил бы подтверждать
+        # пункты, которых в новой редакции уже нет. Подтверждения по пунктам
+        # с неизменившимся текстом переносятся.
+        await clause_service.rebuild_clauses(db, contract)
 
     await log_action(
         db,
@@ -723,10 +826,15 @@ async def update_contract(
 async def archive_contract(
     contract_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_permission("delete")),
+    user: User = Depends(require_permission("archive")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Мягкое удаление: контракт переводится в архив."""
+    """Мягкое удаление: контракт переводится в архив.
+
+    ТЗ (раздел 2) отдаёт статус «В архиве» юристу, поэтому право здесь
+    отдельное: `delete` есть только у администратора и означало бы настоящее
+    удаление, а архивация — обычный шаг работы над документом.
+    """
     contract = await get_visible_contract(contract_id, user, db, for_update=True)
     contract.status = "archived"
     await log_action(
@@ -860,3 +968,288 @@ async def save_review_as_document(
     await db.commit()
     await db.refresh(review)
     return review
+
+
+# --------------------------------------------------------------------------
+# Экспорт, копия, версии (ТЗ, разделы 3.3 и 5)
+# --------------------------------------------------------------------------
+
+
+@router.get("/{contract_id}/export")
+async def export_contract(
+    contract_id: uuid.UUID,
+    request: Request,
+    fmt: str = Query("docx", pattern="^(docx|pdf)$"),
+    mode: str = Query("clean", pattern="^(clean|working)$"),
+    user: User = Depends(require_permission("export")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Выгрузка документа в DOCX или PDF.
+
+    mode=clean   — чистая версия для контрагента;
+    mode=working — рабочая версия с вердиктами, решениями юриста и рисками.
+    """
+    contract = await get_visible_contract(contract_id, user, db)
+    if not (contract.content or "").strip():
+        raise HTTPException(status_code=400, detail="У документа нет текста")
+
+    stored = await clause_service.get_clauses(db, contract.id)
+    if not stored:
+        stored = await clause_service.rebuild_clauses(db, contract)
+        await db.commit()
+        stored = await clause_service.get_clauses(db, contract.id)
+
+    working = mode == "working"
+    checks = decisions = {}
+    logic_findings: list = []
+    risk_findings: list = []
+    comments: list = []
+    if working:
+        ids = [clause.id for clause in stored]
+        checks = await clause_service.latest_checks(db, ids)
+        decisions = await clause_service.current_decisions(db, ids)
+        logic_findings = list(
+            (
+                await db.execute(
+                    select(LogicFinding)
+                    .where(LogicFinding.contract_id == contract.id)
+                    .order_by(LogicFinding.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        risk_findings = list(
+            (
+                await db.execute(
+                    select(RiskFinding)
+                    .where(RiskFinding.contract_id == contract.id)
+                    .order_by(RiskFinding.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        comment_rows = (
+            await db.execute(
+                select(DocumentComment, Clause.anchor)
+                .join(Clause, Clause.id == DocumentComment.clause_id, isouter=True)
+                .where(DocumentComment.contract_id == contract.id)
+                .order_by(DocumentComment.created_at)
+            )
+        ).all()
+        for comment, anchor in comment_rows:
+            comment.clause_anchor = anchor
+            comments.append(comment)
+
+    payload = export_document.build_payload(
+        contract,
+        stored,
+        working=working,
+        checks=checks,
+        decisions=decisions,
+        logic_findings=logic_findings,
+        risk_findings=risk_findings,
+        comments=comments,
+    )
+
+    try:
+        if fmt == "pdf":
+            data = await asyncio.to_thread(export_document.build_pdf, payload)
+            media_type = "application/pdf"
+        else:
+            data = await asyncio.to_thread(export_document.build_docx, payload)
+            media_type = (
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+    except export_document.ExportError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    await log_action(
+        db,
+        action="contract_exported",
+        user_id=user.id,
+        resource_type="contract",
+        resource_id=contract.id,
+        changes={"format": fmt, "mode": mode},
+        ip_address=_client_ip(request),
+    )
+    await db.commit()
+
+    suffix = "rabochaya" if working else "chistaya"
+    filename = f"{_safe_filename(contract.title)}-{suffix}.{fmt}"
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename*=UTF-8''{quote(filename)}"
+            )
+        },
+    )
+
+
+@router.post(
+    "/{contract_id}/duplicate",
+    response_model=ContractDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+async def duplicate_contract(
+    contract_id: uuid.UUID,
+    data: DuplicateContractIn,
+    request: Request,
+    user: User = Depends(require_permission("create")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Создание документа из существующего (ТЗ, раздел 3.3).
+
+    Копируется только текст и реквизиты. Результаты проверок и решения юриста
+    не переносятся: это другой договор с другими сторонами, чужое подтверждение
+    к нему не относится.
+    """
+    source = await get_visible_contract(contract_id, user, db)
+    if not (source.content or "").strip():
+        raise HTTPException(status_code=400, detail="У исходного документа нет текста")
+
+    contract = await _create_contract_row(
+        db,
+        user,
+        title=(data.title or f"{source.title} (копия)").strip(),
+        contract_type=source.contract_type or ContractType.OTHER.value,
+        counterparty=data.counterparty if data.counterparty is not None else source.counterparty,
+        content=source.content,
+        amount=float(source.amount) if source.amount is not None else None,
+        currency=source.currency,
+        file_path=None,
+        ip=_client_ip(request),
+        project_id=data.project_id or source.project_id,
+    )
+    await log_action(
+        db,
+        action="contract_duplicated",
+        user_id=user.id,
+        resource_type="contract",
+        resource_id=contract.id,
+        changes={"source_contract_id": str(source.id)},
+        ip_address=_client_ip(request),
+    )
+    await db.commit()
+    await db.refresh(contract)
+    return contract
+
+
+@router.get("/{contract_id}/versions/{version_number}/diff", response_model=VersionDiffOut)
+async def version_diff(
+    contract_id: uuid.UUID,
+    version_number: int,
+    against: int | None = Query(None, description="С какой версией сравнивать"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Сравнение двух версий в режиме различий (ТЗ, раздел 5).
+
+    Без параметра against сравнивается с предыдущей версией.
+    """
+    contract = await get_visible_contract(contract_id, user, db)
+    target = await _get_version(db, contract.id, version_number)
+    base_number = against if against is not None else version_number - 1
+
+    if base_number < 1:
+        base_content = ""
+        base_number = 0
+    else:
+        base_content = (await _get_version(db, contract.id, base_number)).content or ""
+
+    # Сравнение — синхронная CPU-работа: в event loop оно блокирует весь
+    # процесс, а значит и все остальные организации.
+    try:
+        result = await asyncio.to_thread(
+            versions_service.diff_versions, base_content, target.content or ""
+        )
+    except versions_service.DiffTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+
+    return VersionDiffOut(
+        from_version=base_number,
+        to_version=version_number,
+        blocks=result["blocks"],
+        summary=result["summary"],
+    )
+
+
+@router.post("/{contract_id}/versions/{version_number}/restore", response_model=ContractDetail)
+async def restore_version(
+    contract_id: uuid.UUID,
+    version_number: int,
+    data: VersionRestoreIn,
+    request: Request,
+    user: User = Depends(require_permission("edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Откат к предыдущей версии (ТЗ, раздел 5).
+
+    Откат не стирает историю: он создаёт новую версию с прежним текстом,
+    чтобы в журнале осталось видно, кто и когда откатывал.
+    """
+    contract = await get_visible_contract(contract_id, user, db, for_update=True)
+    _ensure_unlocked(contract)
+    version = await _get_version(db, contract.id, version_number)
+    if (version.content or "") == (contract.content or ""):
+        raise HTTPException(
+            status_code=409, detail="Текущий текст уже совпадает с этой версией"
+        )
+
+    last = (
+        await db.execute(
+            select(func.max(ContractVersion.version_number)).where(
+                ContractVersion.contract_id == contract.id
+            )
+        )
+    ).scalar_one()
+    contract.content = version.content
+    db.add(
+        ContractVersion(
+            contract_id=contract.id,
+            version_number=(last or 0) + 1,
+            content=version.content,
+            changes_description=(
+                data.comment or f"Откат к версии {version_number}"
+            ),
+            created_by=user.id,
+        )
+    )
+    await clause_service.rebuild_clauses(db, contract)
+    await log_action(
+        db,
+        action="contract_version_restored",
+        user_id=user.id,
+        resource_type="contract",
+        resource_id=contract.id,
+        changes={"restored_from": version_number, "comment": data.comment},
+        ip_address=_client_ip(request),
+    )
+    await db.commit()
+    await db.refresh(contract)
+    await search_service.index_contract(contract)
+    return contract
+
+
+async def _get_version(
+    db: AsyncSession, contract_id: uuid.UUID, version_number: int
+) -> ContractVersion:
+    version = (
+        await db.execute(
+            select(ContractVersion).where(
+                ContractVersion.contract_id == contract_id,
+                ContractVersion.version_number == version_number,
+            )
+        )
+    ).scalar_one_or_none()
+    if version is None:
+        raise HTTPException(status_code=404, detail="Версия не найдена")
+    return version
+
+
+def _safe_filename(title: str) -> str:
+    cleaned = re.sub(r"[^\w\-. ]+", "", title or "document", flags=re.UNICODE).strip()
+    return (cleaned or "document")[:80]

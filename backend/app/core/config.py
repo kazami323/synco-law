@@ -96,21 +96,29 @@ class Settings(BaseSettings):
             raise RuntimeError(
                 "ENVIRONMENT must be development, test, staging, or production"
             )
-        if environment == "production":
+        # Боевой стенд может стоять и на ENVIRONMENT=staging: так сделано,
+        # пока не подключён E-IMZO DSV. Раньше это отключало сразу все
+        # проверки, и включение ALLOW_STUB_SIGNATURES на живом сервере прошло
+        # бы молча — а это подделка подписи под договором. Поэтому всё, кроме
+        # требования DSV, действует на любом развёрнутом стенде.
+        if environment in {"staging", "production"}:
             if self.SECRET_KEY == "change-me-in-production" or len(self.SECRET_KEY) < 32:
-                raise RuntimeError("Set a strong SECRET_KEY before production start")
+                raise RuntimeError("Set a strong SECRET_KEY before deploying")
             if not self.CORS_ORIGINS:
-                raise RuntimeError("CORS_ORIGINS must not be empty in production")
+                raise RuntimeError("CORS_ORIGINS must not be empty on a deployed host")
             if "localhost" in self.DATABASE_URL:
-                raise RuntimeError("DATABASE_URL must point to production database")
+                raise RuntimeError("DATABASE_URL must not point at localhost when deployed")
             if self.ALLOW_STUB_SIGNATURES:
-                raise RuntimeError("Disable ALLOW_STUB_SIGNATURES in production")
+                raise RuntimeError("Disable ALLOW_STUB_SIGNATURES on a deployed host")
+            if not self.COOKIE_SECURE:
+                raise RuntimeError("COOKIE_SECURE must be true on a deployed host")
+            if not self.CLAMAV_REQUIRED or not self.CLAMAV_HOST:
+                raise RuntimeError("Configure required ClamAV scanning on a deployed host")
+        if environment == "production":
+            # Единственное, что отличает production от staging: без адреса DSV
+            # подпись проверить нечем.
             if not self.EIMZO_DSV_URL:
                 raise RuntimeError("Set EIMZO_DSV_URL before production start")
-            if not self.COOKIE_SECURE:
-                raise RuntimeError("COOKIE_SECURE must be true in production")
-            if not self.CLAMAV_REQUIRED or not self.CLAMAV_HOST:
-                raise RuntimeError("Configure required ClamAV scanning in production")
 
 
 settings = Settings()

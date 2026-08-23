@@ -1,5 +1,31 @@
 import type { NextConfig } from "next";
 
+const isDev = process.env.NODE_ENV === "development";
+
+// В dev-сборке webpack оборачивает модули в eval(), поэтому без 'unsafe-eval'
+// клиентский бандл не выполняется: страница отрисовывается, но гидратация не
+// проходит и ничего не кликается. Послабление действует только локально —
+// в production CSP остаётся строгим.
+const SCRIPT_SRC = isDev
+  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+  : "script-src 'self' 'unsafe-inline'";
+
+const CSP = [
+  "default-src 'self'",
+  SCRIPT_SRC,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  // В dev HMR ходит по ws:// на локальный порт.
+  isDev
+    ? "connect-src 'self' https: ws: wss:"
+    : "connect-src 'self' https: wss://127.0.0.1:64443",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+].join("; ");
+
 const nextConfig: NextConfig = {
   output: "standalone",
   // Бэкенд различает /api/contracts и /api/contracts/ — не даём Next
@@ -12,11 +38,7 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: [
-          {
-            key: "Content-Security-Policy",
-            value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: wss://127.0.0.1:64443; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
-          },
+          { key: "Content-Security-Policy", value: CSP },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },

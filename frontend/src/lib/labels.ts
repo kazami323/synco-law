@@ -34,6 +34,7 @@ export const ROLE_TITLES: Record<string, string> = {
   lawyer: "юрист",
   compliance: "комплаенс",
   finance: "финансист",
+  observer: "наблюдатель",
   external: "внешний пользователь",
 };
 

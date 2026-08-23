@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.services import legal_search
 from app.services.legal_ingest import upsert_legal_document
+from app.services.templates import mark_templates_stale
 from app.services.lexuz import fetch_lexuz_html, load_historical_articles, parse_lexuz_html
 
 logger = logging.getLogger("app.legal_refresh")
@@ -38,6 +39,7 @@ async def refresh_legal_sources(
     sources = sources if sources is not None else load_legal_sources()
     documents = 0
     articles = 0
+    changed_acts: list[str] = []
     for index, source in enumerate(sources):
         html = await fetch_lexuz_html(
             source["url"],
@@ -63,17 +65,27 @@ async def refresh_legal_sources(
                 refresh=refresh_html,
             )
         result = await upsert_legal_document(db, parsed)
+        if result.revision_changed:
+            changed_acts.append(result.document.title)
         await db.commit()
         documents += 1
         articles += result.articles_count
         if delay_seconds > 0 and index < len(sources) - 1:
             await asyncio.sleep(delay_seconds)
 
+    # ТЗ, раздел 6: уведомить, если законодательство изменилось и шаблон затронут.
+    stale = await mark_templates_stale(db, changed_acts)
+    if stale:
+        await db.commit()
+
     indexed = await legal_search.reindex_all(db)
     logger.info(
-        "legal sources refreshed: documents=%s articles=%s indexed=%s",
+        "legal sources refreshed: documents=%s articles=%s indexed=%s "
+        "changed_acts=%s stale_templates=%s",
         documents,
         articles,
         indexed,
+        len(changed_acts),
+        len(stale),
     )
     return documents, articles

@@ -16,7 +16,7 @@ from app.utils.llm import UsageCollector
 
 async def enforce_ai_access(db: AsyncSession, user: User) -> None:
     if user.organization_id is None:
-        raise HTTPException(status_code=400, detail="Create an organization first")
+        raise HTTPException(status_code=400, detail="Сначала создайте организацию")
     await enforce_ai_limits(
         user_id=str(user.id),
         organization_id=str(user.organization_id),

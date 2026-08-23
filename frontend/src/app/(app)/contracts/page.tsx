@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, FileDown, Plus, Search } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { api, apiDownload } from "@/lib/api";
@@ -151,7 +152,14 @@ function ContractsContent({ initialQuery }: { initialQuery: string }) {
                   className="group border-t border-outline-variant hover:bg-surface-container-low cursor-pointer"
                 >
                   <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-3">
+                    {/* Название — настоящая ссылка: юрист держит несколько
+                        договоров открытыми и ходит по формам с клавиатуры.
+                        Клик по всей строке остаётся как удобство. */}
+                    <Link
+                      href={`/contracts/${c.id}`}
+                      className="flex items-center gap-3"
+                      onClick={(event) => event.stopPropagation()}
+                    >
                       <TypeIcon type={c.contract_type} className="h-9 w-9 shrink-0" />
                       <div className="min-w-0">
                         <div className="font-medium text-on-surface group-hover:text-primary">
@@ -161,7 +169,7 @@ function ContractsContent({ initialQuery }: { initialQuery: string }) {
                           {c.counterparty ?? "Контрагент не указан"}
                         </div>
                       </div>
-                    </div>
+                    </Link>
                   </td>
                   <td className="px-5 py-3.5">
                     <TypeChip type={c.contract_type} />

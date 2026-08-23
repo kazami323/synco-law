@@ -5,6 +5,7 @@ import { Check, CircleDashed, GitBranch, XCircle } from "lucide-react";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { Button, Card, ErrorNote, Modal } from "@/components/ui";
+import { STATUS_LABELS } from "@/components/contract-chips";
 
 interface WorkflowInfo {
   status: string;
@@ -17,27 +18,38 @@ interface WorkflowInfo {
   }[];
 }
 
-const CHAIN = [
-  { status: "draft", label: "Черновик" },
-  { status: "analyzed", label: "AI-анализ" },
-  { status: "approved", label: "Юр. согласование" },
-  { status: "approved_finance", label: "Финансы" },
-  { status: "ready_to_sign", label: "К подписанию" },
-  { status: "signed", label: "Подписан" },
-];
+/**
+ * Цепочка согласования. Названия шагов берутся из `STATUS_LABELS` — единого
+ * зеркала `backend/app/core/statuses.py`: раньше здесь были свои подписи
+ * («Юр. согласование», «К подписанию»), и на одном экране плашка статуса и
+ * стрелка называли одно и то же состояние по-разному.
+ */
+const CHAIN = ["draft", "analyzed", "approved", "approved_finance", "ready_to_sign", "signed"];
+
+/**
+ * Статусы вне цепочки. «Сгенерирован» — обычный старт документа от ИИ,
+ * «На проверке» — идущие модули, «На доработке» — возврат с замечаниями.
+ * Раньше их тут не было, и `findIndex` возвращал -1: для документа в любом из
+ * них стрелка рисовала ВСЕ шаги непройденными, будто с ним ничего не делали.
+ */
+const CHAIN_ALIAS: Record<string, string> = {
+  generated: "draft",
+  analyzing: "draft",
+  needs_revision: "approved",
+};
 
 const ACTION_LABELS: Record<string, string> = {
-  approve_legal: "Согласовать (юрист)",
+  approve_legal: "Подтвердить (юрист)",
   approve_finance: "Согласовать (финансы)",
-  finalize: "Передать на подписание",
+  finalize: "Перевести в «Финальный»",
 };
 
 const STAGE_LABELS: Record<string, string> = {
-  approved: "Юр. согласование",
-  approved_finance: "Финансовое согласование",
-  ready_to_sign: "Передан на подписание",
+  approved: "Подтверждён юристом",
+  approved_finance: "Согласован финансами",
+  ready_to_sign: "Финальный",
   signed: "Подписан",
-  rejected: "Отклонен",
+  rejected: "Возвращён на доработку",
 };
 
 export function WorkflowPanel({ contractId }: { contractId: string }) {
@@ -75,7 +87,10 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
 
   if (!wf.data) return null;
   const { status, available_actions, history } = wf.data;
-  const currentIdx = CHAIN.findIndex((s) => s.status === status);
+  const currentIdx = CHAIN.indexOf(CHAIN_ALIAS[status] ?? status);
+  // «На доработке» — это возврат назад, а не пройденный шаг: подсвечиваем
+  // предыдущую позицию, но не помечаем «Подтверждён юристом» достигнутым.
+  const reverted = status === "needs_revision";
   const actions = available_actions.filter((a) => a !== "reject" && a !== "sign");
   const canReject = available_actions.includes("reject");
 
@@ -90,10 +105,11 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
 
       <ol className="space-y-0">
         {CHAIN.map((step, i) => {
-          const done = currentIdx >= i;
+          const done = reverted ? currentIdx > i : currentIdx >= i;
           const isCurrent = currentIdx === i;
+          const label = STATUS_LABELS[step]?.label ?? step;
           return (
-            <li key={step.status} className="flex gap-3">
+            <li key={step} className="flex gap-3">
               <div className="flex flex-col items-center">
                 <div
                   className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
@@ -121,7 +137,22 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
                       : "text-on-surface-variant"
                 }`}
               >
-                {step.label}
+                {label}
+                {isCurrent && reverted && (
+                  <span className="ml-1.5 font-normal text-warning">
+                    · вернули на доработку
+                  </span>
+                )}
+                {isCurrent && status === "analyzing" && (
+                  <span className="ml-1.5 font-normal text-primary">
+                    · идёт проверка
+                  </span>
+                )}
+                {isCurrent && status === "generated" && (
+                  <span className="ml-1.5 font-normal text-primary">
+                    · собран ИИ
+                  </span>
+                )}
               </div>
             </li>
           );
@@ -156,7 +187,7 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
               onClick={() => setRejectOpen(true)}
             >
               <span className="flex items-center gap-2 text-error">
-                <XCircle size={16} /> Отклонить
+                <XCircle size={16} /> На доработку
               </span>
             </Button>
           )}
@@ -192,9 +223,10 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
       )}
 
       {rejectOpen && (
-        <Modal title="Отклонить контракт" onClose={() => setRejectOpen(false)}>
+        <Modal title="Вернуть на доработку" onClose={() => setRejectOpen(false)}>
           <p className="text-sm text-on-surface-variant mb-3">
-            Контракт вернется в статус «Черновик». Укажите, что нужно исправить.
+            Документ перейдёт в статус «На доработке». Укажите, что нужно исправить —
+            комментарий увидит автор документа.
           </p>
           <textarea
             value={rejectComment}
@@ -219,7 +251,7 @@ export function WorkflowPanel({ contractId }: { contractId: string }) {
                 });
               }}
             >
-              Отклонить
+              Вернуть на доработку
             </Button>
           </div>
         </Modal>

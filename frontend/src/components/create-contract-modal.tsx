@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Briefcase,
   Ellipsis,
@@ -15,47 +15,29 @@ import {
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, apiBackgroundTask, apiUpload } from "@/lib/api";
-import type { ContractDetail } from "@/lib/types";
-import { Button, ErrorNote, Input, Modal } from "@/components/ui";
+import type {
+  ContractDetail,
+  DocumentTemplate,
+  DocumentTypeInfo,
+  DraftParams,
+} from "@/lib/types";
+import { DraftTaskInput } from "@/components/draft-task-input";
+import { Button, ErrorNote, Input, Modal, Select } from "@/components/ui";
 
-const TYPES = [
-  {
-    value: "purchase",
-    label: "Купля-продажа",
-    text: "Договор купли-продажи товаров, оборудования или недвижимости.",
-    icon: ShoppingCart,
-  },
-  {
-    value: "lease",
-    label: "Аренда",
-    text: "Договор аренды коммерческой или жилой недвижимости, транспорта.",
-    icon: KeySquare,
-  },
-  {
-    value: "service",
-    label: "Подряд",
-    text: "Договор на выполнение строительных, ремонтных или иных работ.",
-    icon: Hammer,
-  },
-  {
-    value: "nda",
-    label: "NDA",
-    text: "Соглашение о неразглашении конфиденциальной информации.",
-    icon: Lock,
-  },
-  {
-    value: "employment",
-    label: "Трудовой",
-    text: "Трудовой договор с сотрудником, контракт с руководителем.",
-    icon: Briefcase,
-  },
-  {
-    value: "other",
-    label: "Другое",
-    text: "Создать контракт с нуля или использовать свой шаблон.",
-    icon: Ellipsis,
-  },
-];
+// Иконка по типу документа; сам каталог приходит с бэкенда, чтобы список
+// типов правился в одном месте (backend/app/core/document_types.py).
+const TYPE_ICONS: Record<string, typeof ShoppingCart> = {
+  supply: ShoppingCart,
+  purchase: ShoppingCart,
+  lease: KeySquare,
+  service: Briefcase,
+  contracting: Hammer,
+  nda: Lock,
+  license: KeySquare,
+  employment: Briefcase,
+  amendment: Ellipsis,
+  other: Ellipsis,
+};
 
 const STEPS = ["Тип", "Детали", "Содержание"];
 
@@ -69,7 +51,9 @@ export function CreateContractModal({
   const router = useRouter();
   const qc = useQueryClient();
   const [step, setStep] = useState(0);
-  const [type, setType] = useState("purchase");
+  const [type, setType] = useState("supply");
+  const [templateId, setTemplateId] = useState("");
+  const [draftParams, setDraftParams] = useState<DraftParams | null>(null);
   const [details, setDetails] = useState({
     title: "",
     counterparty: "",
@@ -81,6 +65,17 @@ export function CreateContractModal({
   const [content, setContent] = useState("");
   const [aiRequirements, setAiRequirements] = useState("");
   const [error, setError] = useState("");
+
+  const types = useQuery({
+    queryKey: ["document-types"],
+    queryFn: () => api<DocumentTypeInfo[]>("/api/document-types?group=contract"),
+  });
+  // Шаблоны того же типа: шаг 2 ТЗ, выбор опционален.
+  const templates = useQuery({
+    queryKey: ["templates", type],
+    queryFn: () => api<DocumentTemplate[]>(`/api/templates?doc_type=${type}`),
+    enabled: source === "ai",
+  });
 
   const create = useMutation({
     mutationFn: async (): Promise<ContractDetail> => {
@@ -107,17 +102,32 @@ export function CreateContractModal({
       if (source === "ai") {
         if (!aiRequirements.trim())
           throw new Error("Опишите требования к договору");
+        // ТЗ, 3.1: параметры показываются юристу карточкой для подтверждения
+        // перед генерацией. Без разбора генерация запускалась по одной лишь
+        // постановке задачи — модель домысливала стороны, суммы и сроки, а
+        // юрист узнавал об этом уже из готового текста.
+        if (!draftParams)
+          throw new Error(
+            "Разберите условия и проверьте карточку параметров — по ней собирается документ",
+          );
+        if (draftParams.parsed_from !== undefined && draftParams.parsed_from !== aiRequirements)
+          throw new Error(
+            "Постановка задачи изменилась после разбора. Разберите условия заново.",
+          );
         const draft = await apiBackgroundTask<{ content: string }>("/api/agents/draft/jobs", {
           method: "POST",
           body: {
             contract_type: type,
+            template_id: templateId || null,
+            project_id: projectId ?? null,
             requirements: {
               "название": common.title,
               "контрагент": common.counterparty,
               "сумма": details.amount
                 ? `${details.amount} ${details.currency}`
                 : null,
-              "требования": aiRequirements,
+              "постановка задачи": aiRequirements,
+              "подтверждённые параметры": draftParams,
             },
           },
         });
@@ -129,6 +139,8 @@ export function CreateContractModal({
           ...common,
           content: finalContent || null,
           project_id: projectId ?? null,
+          // Документ, собранный ИИ, заводится как «Сгенерирован» (ТЗ, 3.1).
+          ai_generated: source === "ai",
         },
       });
     },
@@ -175,24 +187,29 @@ export function CreateContractModal({
 
       {step === 0 && (
         <div className="grid grid-cols-2 gap-3 max-h-80 overflow-y-auto">
-          {TYPES.map(({ value, label, text, icon: Icon }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setType(value)}
-              className={`text-left border rounded-xl p-3 transition-colors cursor-pointer ${
-                type === value
-                  ? "border-primary ring-1 ring-primary"
-                  : "border-outline-variant hover:border-primary"
-              }`}
-            >
-              <div className="w-9 h-9 rounded-lg bg-primary-fixed text-primary flex items-center justify-center mb-2">
-                <Icon size={18} />
-              </div>
-              <div className="text-sm font-medium">{label}</div>
-              <div className="text-xs text-on-surface-variant mt-1">{text}</div>
-            </button>
-          ))}
+          {(types.data ?? []).map((item) => {
+            const Icon = TYPE_ICONS[item.value] ?? Ellipsis;
+            return (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setType(item.value)}
+                className={`text-left border rounded-xl p-3 transition-colors cursor-pointer ${
+                  type === item.value
+                    ? "border-primary ring-1 ring-primary"
+                    : "border-outline-variant hover:border-primary"
+                }`}
+              >
+                <div className="w-9 h-9 rounded-lg bg-primary-fixed text-primary flex items-center justify-center mb-2">
+                  <Icon size={18} />
+                </div>
+                <div className="text-sm font-medium">{item.title}</div>
+                <div className="text-xs text-on-surface-variant mt-1">
+                  Обязательных блоков: {item.required_blocks.length}
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -312,13 +329,35 @@ export function CreateContractModal({
             />
           )}
           {source === "ai" && (
-            <textarea
-              value={aiRequirements}
-              onChange={(e) => setAiRequirements(e.target.value)}
-              rows={6}
-              placeholder="Опишите условия: предмет, сроки, порядок оплаты, особые требования… Например: «поставка 100 ноутбуков до 01.09.2026, предоплата 30%, гарантия 24 месяца»"
-              className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm outline-none focus:border-primary"
-            />
+            <div className="space-y-3">
+              <Select
+                label="Шаблон (необязательно)"
+                value={templateId}
+                onChange={(e) => setTemplateId(e.target.value)}
+              >
+                <option value="">
+                  Без шаблона — общая структура для этого типа
+                </option>
+                {(templates.data ?? []).map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                    {template.verified_at ? " · верифицирован" : ""}
+                  </option>
+                ))}
+              </Select>
+              <DraftTaskInput
+                value={aiRequirements}
+                onChange={setAiRequirements}
+                params={draftParams}
+                onParamsChange={setDraftParams}
+              />
+              {!draftParams && aiRequirements.trim() && (
+                <p className="text-xs text-on-surface-variant">
+                  Нажмите «Разобрать условия» и проверьте карточку параметров —
+                  именно по ней собирается документ.
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}

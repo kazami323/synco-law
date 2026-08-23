@@ -166,6 +166,30 @@ async def test_full_product_flow(
     assert chat.status_code == 200, chat.text
     assert "lex.uz/ru/docs/10872#11670" in chat.json()["reply"]
 
+    # Загруженный документ приходит уже разобранным на пункты (ТЗ, 3.2),
+    # поэтому работает и главное правило ТЗ: без прохода по всем пунктам
+    # статус не меняется. Раньше документ из загрузки пунктов не имел и
+    # проскакивал этот гейт.
+    clauses = (
+        await client.get(
+            f"/api/contracts/{contract['id']}/clauses", headers=admin_headers
+        )
+    ).json()
+    assert clauses["progress"]["total"] > 0
+    too_early = await client.post(
+        f"/api/contracts/{contract['id']}/workflow/approve_legal",
+        json={},
+        headers=admin_headers,
+    )
+    assert too_early.status_code == 409
+    for clause in clauses["items"]:
+        resolved = await client.post(
+            f"/api/clauses/{clause['id']}/decision",
+            json={"action": "confirm"},
+            headers=admin_headers,
+        )
+        assert resolved.status_code == 200, resolved.text
+
     approve = await client.post(
         f"/api/contracts/{contract['id']}/workflow/approve_legal",
         json={"comment": "Юридически согласовано"},

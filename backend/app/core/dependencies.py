@@ -21,13 +21,13 @@ async def get_current_user(
     token = credentials.credentials if credentials is not None else auth_cookie
     if token is None:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Требуется вход в систему"
         )
 
     payload = decode_access_token(token)
     if payload is None or payload.get("sub") is None:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Ссылка недействительна или устарела"
         )
 
     subject = str(payload["sub"])
@@ -40,7 +40,7 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Пользователь не найден или отключён"
         )
     return user
 
@@ -52,15 +52,15 @@ async def get_upload_user(
 ) -> User:
     token = credentials.credentials if credentials is not None else auth_cookie
     if token is None:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise HTTPException(status_code=401, detail="Требуется вход в систему")
     payload = decode_upload_token(token) or decode_access_token(token)
     if payload is None or not payload.get("sub"):
-        raise HTTPException(status_code=401, detail="Invalid upload token")
+        raise HTTPException(status_code=401, detail="Ссылка на загрузку недействительна или устарела")
     try:
         user_id = uuid.UUID(str(payload["sub"]))
     except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid upload token") from None
+        raise HTTPException(status_code=401, detail="Ссылка на загрузку недействительна или устарела") from None
     user = await db.get(User, user_id)
     if user is None or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not found or inactive")
+        raise HTTPException(status_code=401, detail="Пользователь не найден или отключён")
     return user

@@ -28,8 +28,17 @@ async def test_cookie_refresh_logout_and_mfa(client):
     assert "refresh_token" in client.cookies
     assert (await client.get("/api/auth/me")).status_code == 200
 
-    setup = await client.post("/api/auth/mfa/setup")
-    assert setup.status_code == 200
+    # Перенастройка MFA требует пароль: без него один запрос с угнанной
+    # сессией снимал бы второй фактор.
+    assert (await client.post("/api/auth/mfa/setup", json={})).status_code == 422
+    assert (
+        await client.post("/api/auth/mfa/setup", json={"password": "wrong-password"})
+    ).status_code == 400
+
+    setup = await client.post(
+        "/api/auth/mfa/setup", json={"password": payload["password"]}
+    )
+    assert setup.status_code == 200, setup.text
     code = totp_code(setup.json()["secret"])
     assert (await client.post("/api/auth/mfa/enable", json={"code": code})).status_code == 200
 

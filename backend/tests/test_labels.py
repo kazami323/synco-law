@@ -188,3 +188,54 @@ async def test_invalid_document_type_rejected(client, admin_headers):
         headers=admin_headers,
     )
     assert resp.status_code in (400, 422)
+
+
+async def _observer_headers(client, admin_headers):
+    resp = await client.post(
+        "/api/users/",
+        json={
+            "email": "obs@test.uz",
+            "username": "observer-user",
+            "password": "Secret1234",
+            "role": "observer",
+        },
+        headers=admin_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    login = await client.post(
+        "/api/auth/login", json={"email": "obs@test.uz", "password": "Secret1234"}
+    )
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
+async def test_observer_cannot_set_or_remove_labels(client, admin_headers):
+    """Роль здесь не проверялась вовсе: наблюдатель мог повесить «Утверждено
+    старшим юристом» на любой договор организации и снять настоящую отметку —
+    именно на неё смотрят перед передачей документа контрагенту."""
+    observer_headers = await _observer_headers(client, admin_headers)
+    contract = await _create(client, admin_headers)
+
+    denied = await client.put(
+        f"/api/contracts/{contract['id']}/labels/approved", headers=observer_headers
+    )
+    assert denied.status_code == 403, denied.text
+
+    await client.put(
+        f"/api/contracts/{contract['id']}/labels/prepared", headers=admin_headers
+    )
+    removal = await client.delete(
+        f"/api/contracts/{contract['id']}/labels/prepared", headers=observer_headers
+    )
+    assert removal.status_code == 403, removal.text
+
+    # Отметка на месте: чужое снятие не прошло.
+    listing = (
+        await client.get(
+            f"/api/contracts/{contract['id']}/labels", headers=admin_headers
+        )
+    ).json()
+    assert [item["kind"] for item in listing] == ["prepared"]
+
+    # И каталог наблюдателю честно показывает, что ставить нечего.
+    view = (await client.get("/api/labels/catalogue", headers=observer_headers)).json()
+    assert all(not item["can_set"] for item in view)

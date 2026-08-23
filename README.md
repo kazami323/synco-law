@@ -155,7 +155,7 @@ python scripts\seed_demo.py
 Демо-логин:
 
 ```text
-demo@legal.local
+demo@legal.uz
 demo12345
 ```
 
@@ -175,6 +175,63 @@ Seed идемпотентный: повторный запуск обновля�
 - `EMAIL_NOTIFY=false` зарезервирован для email/Telegram уведомлений
 
 Без `ANTHROPIC_API_KEY` backend корректно возвращает `503` на AI-операциях, а workflow, подпись, сроки и уведомления продолжают работать.
+
+## Правовой Движок (ТЗ Заказчика)
+
+Ядро продукта — работа с документом **по пунктам**: см.
+[docs/FUNCTIONAL_SPEC.md](docs/FUNCTIONAL_SPEC.md) (каноническое ТЗ) и
+[docs/SPEC_GAP_ANALYSIS.md](docs/SPEC_GAP_ANALYSIS.md) (что реализовано).
+
+Маршрут юриста:
+
+1. Создать документ — генерация (тип → шаблон → голосовая или текстовая
+   постановка задачи → карточка параметров на подтверждение), загрузка
+   DOCX/PDF/скана или копия существующего.
+2. Открыть «Правовую проверку» и запустить модули — по отдельности или все сразу:
+   - **Модуль 1** — разбивка на разделы/пункты/подпункты и сверка каждого
+     пункта с lex.uz: вердикт `соответствует / противоречит / требует внимания /
+     норма не найдена`, текст статьи с редакцией на дату проверки и
+     формулировка-замена при противоречии;
+   - **Модуль 2** — расхождения внутри документа по семи категориям ТЗ, каждое
+     с указанием обоих конфликтующих пунктов;
+   - **Модуль 3** — риски с позиции представляемой стороны (сторона
+     обязательна), шесть категорий, уровень и предложение по устранению.
+3. Пройти пункт за пунктом: подтвердить / изменить / комментарий / отложить.
+   Счётчик «N из M». Пока не подтверждены все пункты, документ не переходит в
+   статус «Подтверждён юристом».
+4. Выгрузить DOCX или PDF: чистую версию для контрагента или рабочую с
+   замечаниями.
+
+Ключевые эндпоинты:
+
+```text
+GET    /api/contracts/{id}/clauses            -> пункты, вердикты, решения, прогресс
+POST   /api/contracts/{id}/clauses/rebuild    -> пересобрать пункты из текста
+POST   /api/clauses/{id}/decision             -> confirm | edit | comment | defer
+GET    /api/clauses/{id}/history              -> история решений по пункту
+POST   /api/contracts/{id}/review             -> { modules[], party_side }
+GET    /api/contracts/{id}/review             -> сводка по документу
+GET    /api/contracts/{id}/logic-findings     -> расхождения (Модуль 2)
+GET    /api/contracts/{id}/risk-findings      -> риски (Модуль 3)
+PATCH  /api/logic-findings/{id}               -> accepted | rejected | fixed
+PATCH  /api/risk-findings/{id}                -> accepted | rejected | fixed
+GET/POST /api/contracts/{id}/comments         -> комментарии (в т.ч. наблюдателя)
+GET    /api/contracts/{id}/export             -> ?fmt=docx|pdf&mode=clean|working
+POST   /api/contracts/{id}/duplicate          -> копия документа
+GET    /api/contracts/{id}/versions/{n}/diff  -> ?against=<версия>
+POST   /api/contracts/{id}/versions/{n}/restore
+GET    /api/templates                         -> база шаблонов
+POST   /api/templates/{id}/verify             -> отметка «верифицирован»
+POST   /api/contracts/{id}/save-as-template
+GET    /api/document-types                    -> каталог типов с обязательными блоками
+GET    /api/document-statuses                 -> каталог статусов
+GET/PUT  /api/projects/{id}/context           -> общий контекст проекта
+GET/POST /api/projects/{id}/members           -> участники проекта
+POST   /api/agents/draft/extract-params       -> карточка параметров перед генерацией
+```
+
+Голосовая постановка задачи расшифровывается в браузере (Web Speech API,
+Chrome и Edge); в остальных браузерах доступен текстовый ввод.
 
 ## API Endpoint Summary
 

@@ -107,7 +107,21 @@ async def test_sign_confirm_requires_pending_request(client, admin_headers):
     assert resp.status_code == 404
 
 
-async def test_sign_confirm_rejects_changed_contract_hash(client, admin_headers):
+async def test_sign_confirm_rejects_changed_contract_hash(
+    client, admin_headers, db_factory
+):
+    """Подпись не должна лечь на текст, изменившийся после запроса подписи.
+
+    Текст правим напрямую в БД: через API документ в статусе «Финальный»
+    уже не редактируется (ТЗ, раздел 2), но проверка хеша обязана оставаться
+    последним рубежом — на случай правки в обход интерфейса.
+    """
+    import uuid as _uuid
+
+    from sqlalchemy import update as sql_update
+
+    from app.db.models import Contract
+
     contract = await _create_contract(client, admin_headers)
     await _move_to_ready_to_sign(client, admin_headers, contract["id"])
 
@@ -118,12 +132,13 @@ async def test_sign_confirm_rejects_changed_contract_hash(client, admin_headers)
     )
     sign_request = request_resp.json()
 
-    update_resp = await client.put(
-        f"/api/contracts/{contract['id']}",
-        json={"content": "Changed after sign request"},
-        headers=admin_headers,
-    )
-    assert update_resp.status_code == 200, update_resp.text
+    async with db_factory() as session:
+        await session.execute(
+            sql_update(Contract)
+            .where(Contract.id == _uuid.UUID(contract["id"]))
+            .values(content="Changed after sign request")
+        )
+        await session.commit()
 
     confirm_resp = await client.post(
         f"/api/contracts/{contract['id']}/sign-confirm",

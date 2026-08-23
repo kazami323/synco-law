@@ -1,8 +1,9 @@
-"""Workflow согласования контрактов (Weeks 9-10).
+"""Workflow согласования документов.
 
-Цепочка: draft → [AI-анализ] → analyzed → approved (юристы) →
-approved_finance (финансы) → ready_to_sign → signed.
-Каждый переход пишется в workflow_states и аудит-лог.
+Цепочка по ТЗ (раздел 2): Черновик / Сгенерирован → На проверке → Проверен →
+Подтверждён юристом → [финансы] → Финальный → Подписан. Возврат с любого шага
+даёт статус «На доработке». Каждый переход пишется в workflow_states и
+аудит-лог: кто, когда, с каким комментарием.
 """
 
 import uuid
@@ -20,6 +21,7 @@ from app.core.permissions import ROLE_PERMISSIONS
 from app.db.base import get_db
 from app.db.models import Contract, User, WorkflowState
 from app.services import search as search_service
+from app.services import clauses as clause_service
 from app.services.notifications import deliver, record_notification
 from app.services.signature import contract_hash, stub_signature
 from app.utils.audit import log_action
@@ -29,7 +31,7 @@ router = APIRouter(prefix="/api", tags=["workflow"])
 # Действие → (из каких статусов, новый статус, требуемое право)
 ACTIONS: dict[str, dict] = {
     "approve_legal": {
-        "from": {"draft", "analyzed"},
+        "from": {"draft", "generated", "analyzed", "needs_revision"},
         "to": "approved",
         "permission": "approve",
         "stage": "approved",
@@ -40,10 +42,16 @@ ACTIONS: dict[str, dict] = {
         "permission": "approve_finance",
         "stage": "approved_finance",
     },
+    # ТЗ отдаёт перевод в «Финальный» строкой «Старший юрист / руководитель»,
+    # поэтому здесь отдельное право finalize, а не общее approve.
+    #
+    # Из «Подтверждён юристом» — тоже: финансовое согласование добавлено сверх
+    # ТЗ, и в организации, где нет сотрудника с ролью «финансы», документ
+    # иначе не доходит до «Финального» вообще.
     "finalize": {
-        "from": {"approved_finance"},
+        "from": {"approved", "approved_finance"},
         "to": "ready_to_sign",
-        "permission": "approve",
+        "permission": "finalize",
         "stage": "ready_to_sign",
     },
     # Пока простая отметка о подписании; реальный E-IMZO — Weeks 11-12
@@ -53,15 +61,24 @@ ACTIONS: dict[str, dict] = {
         "permission": "sign",
         "stage": "signed",
     },
+    # ТЗ, раздел 2: возврат даёт статус «На доработке», а не «Черновик» —
+    # черновик означает, что работа не начиналась, и это разные вещи.
     "reject": {
-        "from": {"analyzed", "approved", "approved_finance", "ready_to_sign"},
-        "to": "draft",
+        "from": {
+            "generated",
+            "analyzing",
+            "analyzed",
+            "approved",
+            "approved_finance",
+            "ready_to_sign",
+        },
+        "to": "needs_revision",
         "permission": None,  # любой, кто может согласовывать
         "stage": "rejected",
     },
 }
 
-REVIEWER_PERMISSIONS = {"approve", "approve_finance", "sign"}
+REVIEWER_PERMISSIONS = {"approve", "approve_finance", "finalize", "sign"}
 
 
 def _user_can(user: User, action: str) -> bool:
@@ -86,6 +103,30 @@ class TransitionRequest(BaseModel):
     comment: str | None = None
 
 
+async def _ensure_clauses_confirmed(db: AsyncSession, contract: Contract) -> None:
+    """ТЗ, раздел 4: пока не подтверждены все пункты, документ не может перейти
+    в статус «Подтверждён юристом».
+
+    Проверка включается, когда документ разобран на пункты — то есть когда
+    юрист начал работу через правовой движок. Документы, которые через движок
+    не проводили, идут прежним маршрутом согласования.
+    """
+    progress = await clause_service.compute_progress(db, contract.id)
+    if progress.total == 0 or progress.complete:
+        return
+    left = progress.total - progress.resolved
+    detail = (
+        f"Подтверждены не все пункты: {progress.resolved} из {progress.total}, "
+        f"осталось {left}."
+    )
+    if progress.stale:
+        detail += (
+            f" По {progress.stale} пункт(ам) текст изменился после подтверждения — "
+            "их нужно пройти заново."
+        )
+    raise HTTPException(status_code=409, detail=detail)
+
+
 # Кого звать на следующий шаг: новый статус → право, дающее ход
 NEXT_STEP_PERMISSION: dict[str, str] = {
     "analyzed": "approve",
@@ -99,7 +140,7 @@ ACTION_LABELS = {
     "approve_finance": "согласован финансовым отделом",
     "finalize": "передан на подписание",
     "sign": "подписан",
-    "reject": "отклонён",
+    "reject": "возвращён на доработку",
 }
 
 
@@ -219,12 +260,15 @@ async def transition(
     comment = data.comment if data else None
     if action == "reject" and not (comment and comment.strip()):
         raise HTTPException(
-            status_code=400, detail="При отклонении обязателен комментарий"
+            status_code=400,
+            detail="При возврате на доработку обязателен комментарий",
         )
+    if action == "approve_legal":
+        await _ensure_clauses_confirmed(db, contract)
     if action == "sign" and not settings.ALLOW_STUB_SIGNATURES:
         raise HTTPException(
             status_code=400,
-            detail="Use E-IMZO sign-request/sign-confirm endpoints",
+            detail="Подписание идёт через E-IMZO: запросите подпись и подтвердите её",
         )
 
     now = datetime.now(timezone.utc)

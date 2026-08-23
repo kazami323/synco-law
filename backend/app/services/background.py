@@ -43,6 +43,14 @@ async def telegram_link_loop() -> None:
 
 async def legal_refresh_loop() -> None:
     if not settings.LEGAL_REFRESH_ENABLED:
+        # Молчаливый выход опасен: без автообновления правовой базы не
+        # сработает и снятие верификации с шаблонов при смене закона, а узнать
+        # об этом было неоткуда. На живом стенде это видно в логе при старте.
+        if settings.ENVIRONMENT.lower() in {"staging", "production"}:
+            logger.warning(
+                "LEGAL_REFRESH_ENABLED=false: правовая база не обновляется, "
+                "верификация шаблонов при смене закона сниматься не будет"
+            )
         return
     while True:
         try:

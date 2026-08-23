@@ -47,7 +47,7 @@ def _require_org(user: User) -> uuid.UUID:
     if user.organization_id is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Create an organization first",
+            detail="Сначала создайте организацию",
         )
     return user.organization_id
 
@@ -56,13 +56,13 @@ def _validate_role(role: str, acting_user: User) -> None:
     if role not in VALID_ROLES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid role. Allowed: {sorted(VALID_ROLES)}",
+            detail=f"Неизвестная роль. Допустимы: {sorted(VALID_ROLES)}",
         )
     # Назначать админа может только админ
     if role == Role.ADMIN.value and acting_user.role != Role.ADMIN.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admin can assign the admin role",
+            detail="Назначить роль администратора может только администратор",
         )
 
 
@@ -113,7 +113,7 @@ async def create_user(
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="User with this email or username already exists",
+            detail="Пользователь с такой почтой или логином уже существует",
         )
 
     new_user = User(
@@ -158,13 +158,13 @@ async def update_user(
     target = result.scalar_one_or_none()
     if target is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден"
         )
 
     updates = data.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Nothing to update"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Нечего сохранять: изменений нет"
         )
 
     if "role" in updates:
@@ -172,7 +172,7 @@ async def update_user(
     if updates.get("is_active") is False and target.id == user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot deactivate yourself",
+            detail="Нельзя отключить собственную учётную запись",
         )
 
     for field, value in updates.items():

@@ -88,12 +88,14 @@ async def test_analyze_endpoint_saves_results(client, admin_headers, mock_llm):
     assert report["overall_assessment"]["legal_compliance"] == "partial"
     assert report["overall_assessment"]["recommendation"] == "Требуется доработка"
 
-    # risk_score и статус обновились на контракте
+    # risk_score обновился, а статус — нет: «Проверен» означает «прошли модули
+    # проверки по пунктам», и легаси-анализ его больше не выставляет, иначе
+    # документ проскакивал гейт подтверждения пунктов, не имея ни одного пункта.
     detail = (
         await client.get(f"/api/contracts/{cid}", headers=admin_headers)
     ).json()
     assert detail["risk_score"] == 55
-    assert detail["status"] == "analyzed"
+    assert detail["status"] == "draft"
 
     # результаты сохранены и читаются
     saved = (

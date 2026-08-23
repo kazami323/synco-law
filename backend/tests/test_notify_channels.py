@@ -103,7 +103,7 @@ async def test_reject_notifies_author_with_comment(client, admin_headers, sent):
 
     notifications = (await client.get("/api/notifications/", headers=lawyer)).json()
     assert any(
-        "отклонён" in n["text"] and "Поправить сроки" in n["text"]
+        "возвращён на доработку" in n["text"] and "Поправить сроки" in n["text"]
         for n in notifications
     ), notifications
 

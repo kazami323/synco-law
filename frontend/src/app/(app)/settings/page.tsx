@@ -302,8 +302,17 @@ function MfaCard({
   const [error, setError] = useState("");
 
   const begin = useMutation({
-    mutationFn: () => api<{ secret: string; otpauth_uri: string }>("/api/auth/mfa/setup", { method: "POST" }),
-    onSuccess: setSetup,
+    mutationFn: () =>
+      api<{ secret: string; otpauth_uri: string }>("/api/auth/mfa/setup", {
+        method: "POST",
+        // Пароль обязателен, а при уже включённой MFA — ещё и текущий код:
+        // иначе перенастройка снимала бы второй фактор.
+        body: { password, code: enabled ? code : null },
+      }),
+    onSuccess: (data) => {
+      setSetup(data);
+      setPassword("");
+    },
     onError: (err) => setError(err instanceof Error ? err.message : "Не удалось настроить MFA"),
   });
   const enable = useMutation({
@@ -336,9 +345,29 @@ function MfaCard({
       </div>
 
       {!enabled && !setup && (
-        <Button className="mt-4" variant="secondary" loading={begin.isPending} onClick={() => { setError(""); begin.mutate(); }}>
-          Настроить MFA
-        </Button>
+        <div className="mt-4 space-y-3">
+          <p className="text-sm text-on-surface-variant">
+            Подтвердите пароль, чтобы привязать приложение-аутентификатор.
+          </p>
+          <Input
+            label="Пароль"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <Button
+            variant="secondary"
+            loading={begin.isPending}
+            disabled={!password}
+            onClick={() => {
+              setError("");
+              begin.mutate();
+            }}
+          >
+            Настроить MFA
+          </Button>
+        </div>
       )}
 
       {!enabled && setup && (

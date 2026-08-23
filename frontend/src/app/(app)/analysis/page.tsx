@@ -17,7 +17,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { CONTRACT_TYPES } from "@/lib/types";
+import { CONTRACT_TYPES, type Analytics } from "@/lib/types";
 import { Card, Skeleton } from "@/components/ui";
 
 /* Серии графиков — токены с валидированными значениями для обеих тем
@@ -26,23 +26,6 @@ const SERIES = {
   created: { label: "Создано", color: "var(--color-chart-1)" },
   signed: { label: "Подписано", color: "var(--color-chart-2)" },
 };
-
-interface Analytics {
-  months: { month: string; created: number; signed: number }[];
-  by_type: { type: string; count: number }[];
-  top_counterparties: {
-    counterparty: string;
-    total_amount: number;
-    count: number;
-  }[];
-  risk: { high: number; medium: number; low: number; unscored: number };
-  totals: {
-    contracts: number;
-    signed_amount: number;
-    avg_risk: number | null;
-    in_work: number;
-  };
-}
 
 const MONTH_LABELS = [
   "янв",

@@ -34,7 +34,7 @@ async def create_organization(
     if user.organization_id is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="User already belongs to an organization",
+            detail="Пользователь уже состоит в организации",
         )
 
     org = Organization(
@@ -71,7 +71,7 @@ async def join_organization(
     if user.organization_id is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="User already belongs to an organization",
+            detail="Пользователь уже состоит в организации",
         )
     await enforce_limit(
         f"organization:join:{user.id}", limit=10, window_seconds=60 * 60
@@ -81,7 +81,7 @@ async def join_organization(
     if not invite_code:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invite code is required",
+            detail="Нужен код приглашения",
         )
 
     result = await db.execute(
@@ -91,7 +91,7 @@ async def join_organization(
     if org is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Organization invite code not found",
+            detail="Организация с таким кодом приглашения не найдена",
         )
 
     user.organization_id = org.id
@@ -119,7 +119,7 @@ async def get_my_organization(
     if user.organization_id is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User does not belong to an organization",
+            detail="Пользователь не состоит в организации",
         )
     result = await db.execute(
         select(Organization).where(Organization.id == user.organization_id)
@@ -137,12 +137,12 @@ async def update_my_organization(
     """Обновить данные организации (только admin/head)."""
     if user.role not in (Role.ADMIN.value, Role.HEAD.value):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для этого действия"
         )
     if user.organization_id is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User does not belong to an organization",
+            detail="Пользователь не состоит в организации",
         )
 
     result = await db.execute(

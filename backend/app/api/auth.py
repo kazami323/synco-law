@@ -69,6 +69,13 @@ class MfaCodeRequest(BaseModel):
     code: str = Field(min_length=6, max_length=6)
 
 
+class MfaSetupRequest(BaseModel):
+    """Перенастройка MFA требует пароль, а при включённой MFA — ещё и код."""
+
+    password: str = Field(min_length=1, max_length=128)
+    code: str | None = Field(default=None, min_length=6, max_length=6)
+
+
 class MfaDisableRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
     code: str = Field(min_length=6, max_length=6)
@@ -164,7 +171,7 @@ async def login(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
+            detail="Неверная почта или пароль",
         )
 
     if user.mfa_enabled:
@@ -172,7 +179,7 @@ async def login(
         if not secret or not data.mfa_code or not verify_totp(secret, data.mfa_code):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="MFA code required or invalid",
+                detail="Нужен действующий код из приложения-аутентификатора",
             )
 
     login_response = await _create_session(db, user, request, response)
@@ -196,7 +203,7 @@ async def refresh_session(
 ):
     raw = request.cookies.get(settings.REFRESH_COOKIE_NAME)
     if not raw:
-        raise HTTPException(status_code=401, detail="Refresh session not found")
+        raise HTTPException(status_code=401, detail="Сессия не найдена. Войдите заново.")
 
     now = datetime.now(timezone.utc)
     session = (
@@ -208,12 +215,12 @@ async def refresh_session(
     ).scalar_one_or_none()
     if session is None or session.revoked_at is not None or session.expires_at <= now:
         _clear_cookies(response)
-        raise HTTPException(status_code=401, detail="Refresh session expired")
+        raise HTTPException(status_code=401, detail="Сессия истекла. Войдите заново.")
 
     user = await db.get(User, session.user_id)
     if user is None or not user.is_active:
         _clear_cookies(response)
-        raise HTTPException(status_code=401, detail="User not found or inactive")
+        raise HTTPException(status_code=401, detail="Пользователь не найден или отключён")
 
     session.revoked_at = now
     result = await _create_session(db, user, request, response)
@@ -268,7 +275,7 @@ async def register(
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="User with this email or username already exists",
+            detail="Пользователь с такой почтой или логином уже существует",
         )
 
     user = User(
@@ -360,10 +367,39 @@ async def reset_password(
 
 
 @router.post("/mfa/setup")
-async def setup_mfa(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def setup_mfa(
+    data: MfaSetupRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Выдаёт секрет-кандидат для привязки приложения-аутентификатора.
+
+    Действующий второй фактор при этом не снимается: раньше один запрос с
+    угнанной сессией выключал MFA и выдавал новый секрет, то есть перехватывал
+    второй фактор целиком.
+    """
+    if not verify_password(data.password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Неверный пароль")
+
+    if user.mfa_enabled:
+        current = decrypt_secret(user.mfa_secret_encrypted or "")
+        if not current or not data.code or not verify_totp(current, data.code):
+            raise HTTPException(
+                status_code=400,
+                detail="Для перенастройки укажите код из приложения-аутентификатора",
+            )
+
     secret = new_totp_secret()
-    user.mfa_secret_encrypted = encrypt_secret(secret)
-    user.mfa_enabled = False
+    user.mfa_pending_secret_encrypted = encrypt_secret(secret)
+    await log_action(
+        db,
+        action="mfa_setup_started",
+        user_id=user.id,
+        resource_type="user",
+        resource_id=user.id,
+        ip_address=_client_ip(request),
+    )
     await db.commit()
     return {"secret": secret, "otpauth_uri": totp_uri(secret, user.email)}
 
@@ -371,13 +407,26 @@ async def setup_mfa(user: User = Depends(get_current_user), db: AsyncSession = D
 @router.post("/mfa/enable")
 async def enable_mfa(
     data: MfaCodeRequest,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    secret = decrypt_secret(user.mfa_secret_encrypted or "")
-    if not secret or not verify_totp(secret, data.code):
+    """Подтверждает секрет-кандидат кодом и делает его действующим."""
+    pending = decrypt_secret(user.mfa_pending_secret_encrypted or "")
+    if not pending or not verify_totp(pending, data.code):
         raise HTTPException(status_code=400, detail="Неверный код MFA")
+
+    user.mfa_secret_encrypted = user.mfa_pending_secret_encrypted
+    user.mfa_pending_secret_encrypted = None
     user.mfa_enabled = True
+    await log_action(
+        db,
+        action="mfa_enabled",
+        user_id=user.id,
+        resource_type="user",
+        resource_id=user.id,
+        ip_address=_client_ip(request),
+    )
     await db.commit()
     return {"detail": "MFA включена"}
 
@@ -385,6 +434,7 @@ async def enable_mfa(
 @router.post("/mfa/disable")
 async def disable_mfa(
     data: MfaDisableRequest,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -397,6 +447,15 @@ async def disable_mfa(
         raise HTTPException(status_code=400, detail="Пароль или код MFA неверны")
     user.mfa_enabled = False
     user.mfa_secret_encrypted = None
+    user.mfa_pending_secret_encrypted = None
+    await log_action(
+        db,
+        action="mfa_disabled",
+        user_id=user.id,
+        resource_type="user",
+        resource_id=user.id,
+        ip_address=_client_ip(request),
+    )
     await db.commit()
     return {"detail": "MFA отключена"}
 

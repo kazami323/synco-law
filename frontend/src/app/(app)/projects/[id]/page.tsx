@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +26,7 @@ import {
   TypeChip,
 } from "@/components/contract-chips";
 import { CreateContractModal } from "@/components/create-contract-modal";
+import { ProjectContextPanel } from "@/components/project-context-panel";
 
 interface ContractList {
   total: number;
@@ -131,6 +133,10 @@ export default function ProjectPage() {
         </Card>
       )}
 
+      <div className="mt-6">
+        <ProjectContextPanel projectId={id} />
+      </div>
+
       <Card className="mt-6 overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 bg-surface-container-low border-b border-outline-variant">
           <h2 className="font-semibold">
@@ -168,7 +174,16 @@ export default function ProjectPage() {
                     className="border-t border-outline-variant hover:bg-surface-container-low cursor-pointer"
                   >
                     <td className="px-6 py-4">
-                      <div className="text-primary font-medium">{c.title}</div>
+                      {/* Ссылка, а не только onClick на строке: открыть договор
+                          в новой вкладке и дойти до него табом — обычная
+                          работа юриста. */}
+                      <Link
+                        href={`/contracts/${c.id}`}
+                        className="text-primary font-medium hover:underline"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {c.title}
+                      </Link>
                       {c.labels?.length ? (
                         <div className="mt-1.5">
                           <LabelChips labels={c.labels} compact />

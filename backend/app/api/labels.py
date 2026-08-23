@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.contracts import get_visible_contract
 from app.core.dependencies import get_current_user
+from app.core.permissions import has_permission
 from app.core.labels import (
     LABEL_CATALOGUE,
     is_auto_only,
@@ -53,10 +54,24 @@ class SetLabelRequest(BaseModel):
 
 
 def _can_set(user: User, kind: str) -> bool:
-    # По решению заказчика ставить и снимать отметки может любой сотрудник,
-    # у которого есть доступ к документу (доступ проверяет get_visible_contract).
-    # Исключение — автоматическая «Проверено ИИ»: её руками не трогают.
-    return not is_auto_only(kind)
+    """Кто может ставить и снимать отметку.
+
+    По решению заказчика отметки ставит любой сотрудник, работающий с
+    документом, — включая снятие чужой отметки. Но «работающий с документом» —
+    это не наблюдатель и не внешний пользователь: роль здесь не проверялась
+    вовсе, и наблюдатель мог повесить «Утверждено старшим юристом» на любой
+    договор организации или снять настоящую. Именно на эту отметку смотрят
+    перед передачей документа контрагенту.
+
+    Мерилом взято право `edit`: им обладают ровно те роли, которые ведут
+    документ. Отдельного права на «Утверждено» здесь намеренно нет — иначе
+    рядовой юрист, который и готовит документ, перестал бы её ставить.
+
+    Исключение — автоматическая «Проверено ИИ»: её руками не трогают.
+    """
+    if is_auto_only(kind):
+        return False
+    return has_permission(user, "edit")
 
 
 def _serialize(label) -> LabelOut:

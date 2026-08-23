@@ -14,8 +14,12 @@ import {
   FileSignature,
   History,
   Languages,
+  Copy,
+  FileDown,
+  GitCompare,
   LayoutPanelLeft,
   Pencil,
+  Scale,
   Plus,
   ShieldCheck,
 } from "lucide-react";
@@ -38,6 +42,7 @@ import {
   Chip,
   ErrorNote,
   Input,
+  Menu,
   Modal,
   Select,
   Spinner,
@@ -48,10 +53,12 @@ import {
   StatusChip,
   TypeChip,
   TypeIcon,
+  isLocked,
 } from "@/components/contract-chips";
 import { AnalysisSection } from "@/components/analysis-section";
 import { DocumentLabelsPanel } from "@/components/document-labels-panel";
 import { TranslateModal } from "@/components/translate-modal";
+import { VersionDiffModal } from "@/components/version-diff-modal";
 import { WorkflowPanel } from "@/components/workflow-panel";
 import {
   eimzoAvailable,
@@ -88,6 +95,8 @@ export default function ContractPage() {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
+  const [diffOpen, setDiffOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<"clean" | "working" | null>(null);
   const [signRequestData, setSignRequestData] = useState<SignRequest | null>(null);
   const [pin, setPin] = useState("");
   const [signError, setSignError] = useState("");
@@ -103,6 +112,19 @@ export default function ContractPage() {
   const versions = useQuery({
     queryKey: ["contract-versions", id],
     queryFn: () => api<ContractVersion[]>(`/api/contracts/${id}/versions`),
+  });
+
+  /** Создание документа из существующего (ТЗ, раздел 3.3). */
+  const duplicate = useMutation({
+    mutationFn: () =>
+      api<ContractDetail>(`/api/contracts/${id}/duplicate`, {
+        method: "POST",
+        body: {},
+      }),
+    onSuccess: (copy) => {
+      qc.invalidateQueries({ queryKey: ["contracts"] });
+      router.push(`/contracts/${copy.id}`);
+    },
   });
 
   const signRequest = useMutation({
@@ -166,6 +188,24 @@ export default function ContractPage() {
     if (!c?.file_path) return;
     const filename = c.file_path.split("/").pop() || "document";
     await apiDownload(`/api/contracts/${id}/download`, filename);
+  };
+
+  /** Экспорт по ТЗ, раздел 5: чистая версия для контрагента и рабочая с
+   *  замечаниями для внутреннего использования. */
+  const exportDocument = async (
+    mode: "clean" | "working",
+    fmt: "docx" | "pdf" = "docx",
+  ) => {
+    setExportMode(mode);
+    try {
+      const suffix = mode === "working" ? "рабочая" : "чистая";
+      await apiDownload(
+        `/api/contracts/${id}/export?fmt=${fmt}&mode=${mode}`,
+        `${contract.data?.title ?? "документ"}-${suffix}.${fmt}`,
+      );
+    } finally {
+      setExportMode(null);
+    }
   }
 
   function openSignModal() {
@@ -217,8 +257,9 @@ export default function ContractPage() {
   }
 
   const c = contract.data;
-  const canEdit = can(user, "edit");
-  const canArchive = can(user, "delete") && c.status !== "archived";
+  const locked = isLocked(c.status);
+  const canEdit = can(user, "edit") && !locked;
+  const canArchive = can(user, "archive") && c.status !== "archived";
   const canSign = can(user, "sign") && c.status === "ready_to_sign";
 
   return (
@@ -246,50 +287,96 @@ export default function ContractPage() {
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        {/* На виду — то, ради чего юрист открыл документ. Экспорт, копия,
+            перевод и архив уходят в меню: восемь равнозначных кнопок в ряд
+            заставляют читать их каждый раз заново. */}
+        <div className="flex flex-wrap items-center gap-2">
+          {c.content && (
+            <Button onClick={() => router.push(`/contracts/${c.id}/review`)}>
+              <Scale size={16} /> Правовая проверка
+            </Button>
+          )}
+          {canSign && (
+            <Button onClick={openSignModal} disabled={signRequest.isPending}>
+              <FileSignature size={16} /> Подписать
+            </Button>
+          )}
           <Button
             variant="secondary"
             onClick={() => router.push(`/contracts/${c.id}/workspace`)}
           >
-            <span className="flex items-center gap-2">
-              <LayoutPanelLeft size={16} /> Рабочий стол
-            </span>
+            <LayoutPanelLeft size={16} /> Рабочий стол
           </Button>
-          {canSign && (
-            <Button onClick={openSignModal} disabled={signRequest.isPending}>
-              <span className="flex items-center gap-2">
-                <FileSignature size={16} /> Подписать
-              </span>
-            </Button>
-          )}
-          {c.file_path && (
-            <Button variant="secondary" onClick={download}>
-              <span className="flex items-center gap-2">
-                <Download size={16} /> Исходный файл
-              </span>
-            </Button>
-          )}
-          {c.content && (
-            <Button variant="secondary" onClick={() => setTranslateOpen(true)}>
-              <span className="flex items-center gap-2">
-                <Languages size={16} /> Перевести
-              </span>
-            </Button>
-          )}
           {canEdit && (
             <Button variant="secondary" onClick={() => setEditOpen(true)}>
-              <span className="flex items-center gap-2">
-                <Pencil size={16} /> Редактировать
-              </span>
+              <Pencil size={16} /> Редактировать
             </Button>
           )}
-          {canArchive && (
-            <Button variant="danger" onClick={() => setConfirmArchive(true)}>
-              <span className="flex items-center gap-2">
-                <Archive size={16} /> В архив
-              </span>
-            </Button>
-          )}
+          <Menu
+            label="Ещё"
+            items={[
+              ...(c.content && can(user, "export")
+                ? [
+                    {
+                      label: "DOCX для контрагента",
+                      icon: <Download size={15} />,
+                      onClick: () => exportDocument("clean"),
+                      disabled: exportMode !== null,
+                    },
+                    {
+                      label: "Рабочая версия DOCX",
+                      icon: <Download size={15} />,
+                      onClick: () => exportDocument("working"),
+                      disabled: exportMode !== null,
+                    },
+                    {
+                      label: "PDF для контрагента",
+                      icon: <Download size={15} />,
+                      onClick: () => exportDocument("clean", "pdf"),
+                      disabled: exportMode !== null,
+                    },
+                  ]
+                : []),
+              ...(c.file_path
+                ? [
+                    {
+                      label: "Скачать исходный файл",
+                      icon: <FileDown size={15} />,
+                      onClick: download,
+                    },
+                  ]
+                : []),
+              ...(c.content && can(user, "create")
+                ? [
+                    {
+                      label: "Создать копию",
+                      icon: <Copy size={15} />,
+                      onClick: () => duplicate.mutate(),
+                      disabled: duplicate.isPending,
+                    },
+                  ]
+                : []),
+              ...(c.content
+                ? [
+                    {
+                      label: "Перевести",
+                      icon: <Languages size={15} />,
+                      onClick: () => setTranslateOpen(true),
+                    },
+                  ]
+                : []),
+              ...(canArchive
+                ? [
+                    {
+                      label: "В архив",
+                      icon: <Archive size={15} />,
+                      onClick: () => setConfirmArchive(true),
+                      danger: true,
+                    },
+                  ]
+                : []),
+            ]}
+          />
         </div>
       </div>
 
@@ -371,9 +458,19 @@ export default function ContractPage() {
           <DeadlinesPanel contractId={c.id} canEdit={canEdit} />
 
           <Card className="p-6 h-fit">
-            <div className="flex items-center gap-2 font-semibold mb-4">
-              <History size={18} />
-              История версий
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <div className="flex items-center gap-2 font-semibold">
+                <History size={18} />
+                История версий
+              </div>
+              {(versions.data?.length ?? 0) > 1 && (
+                <button
+                  onClick={() => setDiffOpen(true)}
+                  className="flex items-center gap-1.5 text-sm text-primary hover:underline cursor-pointer"
+                >
+                  <GitCompare size={16} /> Сравнить
+                </button>
+              )}
             </div>
             <div className="space-y-3">
               {versions.data?.map((v) => (
@@ -405,6 +502,15 @@ export default function ContractPage() {
 
       {translateOpen && (
         <TranslateModal contractId={c.id} onClose={() => setTranslateOpen(false)} />
+      )}
+
+      {diffOpen && (
+        <VersionDiffModal
+          contractId={c.id}
+          versions={versions.data ?? []}
+          locked={locked}
+          onClose={() => setDiffOpen(false)}
+        />
       )}
 
       {signOpen && (

@@ -1,6 +1,6 @@
 """Метрики дашборда руководителя (Task 1.14) — реальные данные из БД."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -22,7 +22,7 @@ async def get_dashboard_metrics(
     if user.organization_id is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Create an organization first",
+            detail="Сначала создайте организацию",
         )
 
     row = (
@@ -67,6 +67,34 @@ async def get_dashboard_metrics(
             )
         )
     ).scalar_one()
+    overdue_count = (
+        await db.execute(
+            select(func.count(func.distinct(ContractDeadline.contract_id)))
+            .join(Contract, ContractDeadline.contract_id == Contract.id)
+            .where(
+                Contract.organization_id == user.organization_id,
+                Contract.status != "archived",
+                ContractDeadline.deadline_date < today,
+            )
+        )
+    ).scalar_one()
+
+    # Прирост за неделю. Считаем по фактическим датам (created_at, signed_at),
+    # а не «процентом к прошлой неделе»: сравнивать не с чем, а выдуманная
+    # динамика на дашборде юротдела — это ложные цифры в отчёте руководителю.
+    week_ago = datetime.combine(today - timedelta(days=7), time.min, timezone.utc)
+    week_row = (
+        await db.execute(
+            select(
+                func.count().filter(Contract.created_at >= week_ago).label("created"),
+                func.count().filter(Contract.signed_at >= week_ago).label("signed"),
+                func.count()
+                .filter(Contract.status.notin_(["archived", "signed"]))
+                .label("in_work"),
+            ).where(Contract.organization_id == user.organization_id)
+        )
+    ).one()
+
     upcoming_rows = (
         await db.execute(
             select(ContractDeadline, Contract)
@@ -89,6 +117,10 @@ async def get_dashboard_metrics(
         "pending_approval": row.pending,
         "signed": row.signed,
         "upcoming_deadlines_count": upcoming_count,
+        "overdue_deadlines_count": overdue_count,
+        "in_work": week_row.in_work,
+        "created_last_7d": week_row.created,
+        "signed_last_7d": week_row.signed,
         "upcoming_deadlines": [
             {
                 "id": str(deadline.id),
@@ -114,7 +146,7 @@ async def get_analytics(
     if user.organization_id is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Create an organization first",
+            detail="Сначала создайте организацию",
         )
     org_id = user.organization_id
     months = max(1, min(months, 24))

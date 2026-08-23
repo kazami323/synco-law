@@ -65,7 +65,7 @@ class SessionOut(BaseModel):
 
 def _org_id(user: User) -> uuid.UUID:
     if user.organization_id is None:
-        raise HTTPException(status_code=400, detail="Create an organization first")
+        raise HTTPException(status_code=400, detail="Сначала создайте организацию")
     return user.organization_id
 
 
@@ -81,13 +81,13 @@ async def _owned_session(
         query = query.with_for_update()
     session = (await db.execute(query)).scalar_one_or_none()
     if session is None:
-        raise HTTPException(status_code=404, detail="Chat session not found")
+        raise HTTPException(status_code=404, detail="Диалог не найден")
     return session
 
 
 def _validate_agent(agent: str) -> None:
     if agent not in AGENT_PROMPTS:
-        raise HTTPException(status_code=400, detail="Unknown agent")
+        raise HTTPException(status_code=400, detail="Неизвестный агент")
 
 
 @router.get("/", response_model=list[SessionOut])
@@ -123,7 +123,7 @@ async def create_session(
         existing = await db.get(AgentChatSession, data.id)
         if existing is not None:
             if existing.user_id != user.id:
-                raise HTTPException(status_code=409, detail="Chat session ID already exists")
+                raise HTTPException(status_code=409, detail="Диалог с таким идентификатором уже существует")
             return existing
     session = AgentChatSession(
         id=data.id or uuid.uuid4(),
@@ -193,9 +193,9 @@ async def set_message_feedback(
     session = await _owned_session(session_id, user, db, lock=True)
     messages = [dict(message) for message in session.messages]
     if message_index < 0 or message_index >= len(messages):
-        raise HTTPException(status_code=404, detail="Message not found")
+        raise HTTPException(status_code=404, detail="Сообщение не найдено")
     if messages[message_index].get("role") != "assistant":
-        raise HTTPException(status_code=400, detail="Only assistant messages can be rated")
+        raise HTTPException(status_code=400, detail="Оценить можно только ответ ассистента")
     if data.rating is None:
         messages[message_index].pop("feedback", None)
     else:

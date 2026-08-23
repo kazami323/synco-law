@@ -43,6 +43,7 @@ ROLE_TITLES: dict[str, str] = {
     Role.LAWYER.value: "юрист",
     Role.COMPLIANCE.value: "комплаенс",
     Role.FINANCE.value: "финансист",
+    Role.OBSERVER.value: "наблюдатель",
     Role.EXTERNAL.value: "внешний пользователь",
 }
 

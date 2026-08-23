@@ -18,11 +18,12 @@ from app.core.config import settings
 from app.core.dependencies import get_current_user, get_upload_user
 from app.core.permissions import require_permission
 from app.db.base import async_session_factory, get_db
-from app.db.models import AgentChatSession, AgentResult, Organization, User
+from app.db.models import AgentChatSession, AgentResult, Organization, Project, User
 from app.agents.chat import AGENT_PROMPTS, CHAT_MAX_TOKENS, agent_chat, build_agent_prompt
 from app.agents.orchestrator import ContractAnalysisOrchestrator
 from app.agents.response_standard import append_legal_standard, legal_basis_payload
 from app.services import search as search_service
+from app.services import templates as template_service
 from app.services.ai_usage import enforce_ai_access, record_ai_usage
 from app.services.labels import set_label
 from app.utils.audit import log_action
@@ -104,8 +105,11 @@ async def _perform_contract_analysis(
         )
 
     contract.risk_score = report["analysis"]["risk_agent"].get("overall_score")
-    if contract.status == "draft":
-        contract.status = "analyzed"
+    # Статус здесь НЕ меняем: «Проверен» по ТЗ означает, что отработали модули
+    # правового движка, а этот путь — сводный отчёт агентов, а не Модули 1-3.
+    # Раньше документ получал «Проверен», не пройдя ни одного модуля, и затем
+    # проскакивал гейт подтверждения пунктов, потому что пунктов у него нет.
+    # Статус ставит только review._sync_contract_status.
 
     # Документ прошёл проверку ИИ — вешаем плашку, чтобы это видела вся команда.
     # Автором указываем риск-агента: именно он даёт итоговую оценку риска.
@@ -278,7 +282,7 @@ async def _store_chat_session(
     ).scalar_one_or_none()
     if session is None:
         if user.organization_id is None:
-            raise HTTPException(status_code=400, detail="Create an organization first")
+            raise HTTPException(status_code=400, detail="Сначала создайте организацию")
         session = AgentChatSession(
             id=data.session_id,
             organization_id=user.organization_id,
@@ -561,6 +565,41 @@ async def _perform_translation(
 class DraftRequest(BaseModel):
     contract_type: str
     requirements: dict
+    # Шаблон из базы организации (ТЗ, раздел 3.1, шаг 2) — необязателен.
+    template_id: uuid.UUID | None = None
+    # Проект, из которого берётся общий контекст: стороны, суммы, сроки.
+    project_id: uuid.UUID | None = None
+
+
+class ExtractParamsRequest(BaseModel):
+    """Текст постановки задачи: набранный или расшифрованный из речи."""
+
+    text: str
+
+
+@router.post("/agents/draft/extract-params")
+async def extract_draft_params(
+    data: ExtractParamsRequest,
+    user: User = Depends(require_permission("create")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Карточка параметров для подтверждения перед генерацией (ТЗ, шаг 3).
+
+    Это не генерация: юрист сначала видит, что система поняла из его слов, и
+    правит любое поле. Договор составляется только после подтверждения.
+    """
+    require_api_key()
+    await enforce_ai_access(db, user)
+    text = (data.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Пустая постановка задачи")
+
+    orchestrator = ContractAnalysisOrchestrator()
+    with collect_usage() as usage:
+        params = await orchestrator.draft_agent.extract_parameters(text)
+    record_ai_usage(db, user, usage, endpoint="draft_params", agent="draft")
+    await db.commit()
+    return {**params, "transcript": text}
 
 
 @router.post("/agents/draft")
@@ -569,10 +608,17 @@ async def generate_draft(
     user: User = Depends(require_permission("create")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Сгенерировать текст договора по требованиям (Draft Agent)."""
+    """Сгенерировать текст документа по подтверждённым параметрам."""
     require_api_key()
     await enforce_ai_access(db, user)
-    return await _perform_draft(data.contract_type, data.requirements, user, db)
+    return await _perform_draft(
+        data.contract_type,
+        data.requirements,
+        user,
+        db,
+        template_id=data.template_id,
+        project_id=data.project_id,
+    )
 
 
 async def _perform_draft(
@@ -580,11 +626,40 @@ async def _perform_draft(
     requirements: dict,
     user: User,
     db: AsyncSession,
+    *,
+    template_id: uuid.UUID | None = None,
+    project_id: uuid.UUID | None = None,
 ):
+    template_text = None
+    if template_id is not None:
+        template = await template_service.get_template(
+            db, template_id, user.organization_id
+        )
+        if template is None:
+            raise HTTPException(status_code=404, detail="Шаблон не найден")
+        template_text = template.content
+
+    project_context = None
+    if project_id is not None:
+        project = (
+            await db.execute(
+                select(Project).where(
+                    Project.id == project_id,
+                    Project.organization_id == user.organization_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if project is None:
+            raise HTTPException(status_code=404, detail="Проект не найден")
+        project_context = project.context or None
+
     orchestrator = ContractAnalysisOrchestrator()
     with collect_usage() as usage:
         content = await orchestrator.draft_agent.create_contract(
-            contract_type, requirements
+            contract_type,
+            requirements,
+            template=template_text,
+            project_context=project_context,
         )
     record_ai_usage(db, user, usage, endpoint="draft_generation", agent="draft")
     await db.commit()

@@ -101,7 +101,8 @@ async def test_finance_only_from_approved_status(client, admin_headers):
     assert resp.status_code == 403
 
 
-async def test_reject_requires_comment_and_returns_to_draft(client, admin_headers):
+async def test_reject_requires_comment_and_returns_to_revision(client, admin_headers):
+    """ТЗ, раздел 2: возврат даёт статус «На доработке», а не «Черновик»."""
     cid = await _make_contract(client, admin_headers)
     await client.post(
         f"/api/contracts/{cid}/workflow/approve_legal", json={}, headers=admin_headers
@@ -118,7 +119,7 @@ async def test_reject_requires_comment_and_returns_to_draft(client, admin_header
         headers=admin_headers,
     )
     assert resp.status_code == 200
-    assert resp.json()["status"] == "draft"
+    assert resp.json()["status"] == "needs_revision"
 
     wf = (
         await client.get(f"/api/contracts/{cid}/workflow", headers=admin_headers)
@@ -140,9 +141,11 @@ async def test_available_actions_by_role(client, admin_headers):
     )
     wf = (await client.get(f"/api/contracts/{cid}/workflow", headers=finance)).json()
     assert set(wf["available_actions"]) == {"approve_finance", "reject"}
-    # head из approved ничего согласовать не может (ждём финансы), но может отклонить
+    # Руководитель из «Подтверждён юристом» может сразу перевести в «Финальный»:
+    # финансовое согласование добавлено сверх ТЗ, и в организации без роли
+    # «финансы» документ иначе не доходил до «Финального» вообще.
     wf = (await client.get(f"/api/contracts/{cid}/workflow", headers=head)).json()
-    assert wf["available_actions"] == ["reject"]
+    assert set(wf["available_actions"]) == {"finalize", "reject"}
 
 
 async def test_unknown_action_404(client, admin_headers):

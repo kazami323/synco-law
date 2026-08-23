@@ -137,7 +137,7 @@ async def read_notification(
         )
     ).one_or_none()
     if row is None:
-        raise HTTPException(status_code=404, detail="Notification not found")
+        raise HTTPException(status_code=404, detail="Уведомление не найдено")
     notification, contract_title = row
     await mark_notification_read(notification)
     await db.commit()

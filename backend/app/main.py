@@ -7,6 +7,7 @@ from sqlalchemy import text
 
 from app.api import (
     agents,
+    audit,
     auth,
     chat_sessions,
     contracts,
@@ -16,7 +17,9 @@ from app.api import (
     notifications,
     organizations,
     projects,
+    review,
     search,
+    templates,
     users,
     workflow,
 )
@@ -57,6 +60,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(audit.router)
 app.include_router(auth.router)
 app.include_router(organizations.router)
 app.include_router(users.router)
@@ -70,6 +74,8 @@ app.include_router(notifications.router)
 app.include_router(workflow.router)
 app.include_router(labels.router)
 app.include_router(search.router)
+app.include_router(review.router)
+app.include_router(templates.router)
 
 
 @app.get("/health", tags=["system"])
@@ -79,7 +85,7 @@ async def health() -> dict:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="database unavailable") from exc
+        raise HTTPException(status_code=503, detail="База данных временно недоступна") from exc
     return {
         "status": "ok",
         "version": settings.APP_VERSION,
