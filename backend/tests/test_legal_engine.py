@@ -7,7 +7,7 @@
 
 import pytest
 
-from app.agents.clause_checker import normalize_verdicts
+from app.agents.clause_checker import normalize_verdicts, source_snapshot
 from app.agents.logic_agent import normalize_findings
 from app.agents.risk_agent import normalize_risk_result
 from app.services import clause_splitter
@@ -203,6 +203,79 @@ def test_unknown_verdict_becomes_no_norm():
     assert normalize_verdicts(raw, clauses, [])[0]["verdict"] == "no_norm"
 
 
+def test_source_snapshot_preserves_repealed_reference_status():
+    """D3: снапшот нормы обязан нести признак отмены, иначе в карточке пункта
+    отменённая статья выглядит действующей нормой (clause_checker.py:165 —
+    source_snapshot копирует восемь полей и теряет reference_status,
+    repealed_at, historical_revision_date, repeal_notice, repeal_law_url,
+    хотя legal_search.py их собирает при поиске по точной ссылке на
+    историческую редакцию, см. _search_exact_reference)."""
+    source = {
+        "document_title": "Гражданский кодекс Республики Узбекистан (часть первая)",
+        "document_number": None,
+        "article_number": "66",
+        "article_title": "Статья 66. Закрытое акционерное общество",
+        "content": "Статья 66. Закрытое акционерное общество. Утратила силу.",
+        "url": "https://lex.uz/ru/docs/111181?ONDATE=01.03.1997%2000#156804",
+        "current_revision_date": None,
+        "status": "active",
+        "reference_status": "repealed",
+        "repealed_at": "2014-05-15",
+        "historical_revision_date": "1997-03-01",
+        "repeal_notice": (
+            "Статьи 65 и 66 утратили силу в соответствии с Законом "
+            "Республики Узбекистан от 14 мая 2014 года № ЗРУ-372."
+        ),
+        "repeal_law_url": "https://lex.uz/ru/docs/2388209",
+    }
+
+    snapshot = source_snapshot(source)
+
+    assert snapshot["reference_status"] == "repealed"
+    assert snapshot["repealed_at"] == "2014-05-15"
+    assert snapshot["historical_revision_date"] == "1997-03-01"
+    assert snapshot["repeal_notice"] == source["repeal_notice"]
+    assert snapshot["repeal_law_url"] == "https://lex.uz/ru/docs/2388209"
+
+
+def test_verdict_sources_preserve_repealed_status_end_to_end():
+    """Тот же дефект D3, но на границе, которую видит остальная система:
+    источник вердикта по пункту (result["sources"]) обязан донести признак
+    отмены нормы до вызывающего кода, а не только сам source_snapshot()."""
+    clauses = [{"anchor": "3.2", "content": "Общество создаётся в форме ЗАО"}]
+    sources = [
+        {
+            "document_title": "Гражданский кодекс Республики Узбекистан (часть первая)",
+            "article_number": "66",
+            "content": "Статья 66. Закрытое акционерное общество. Утратила силу.",
+            "url": "https://lex.uz/ru/docs/111181#156804",
+            "current_revision_date": None,
+            "reference_status": "repealed",
+            "repealed_at": "2014-05-15",
+            "historical_revision_date": "1997-03-01",
+            "repeal_notice": "Утратила силу Законом № ЗРУ-372 от 14.05.2014.",
+            "repeal_law_url": "https://lex.uz/ru/docs/2388209",
+        }
+    ]
+    raw = {
+        "verdicts": [
+            {
+                "anchor": "3.2",
+                "verdict": "compliant",
+                "rationale": "Соответствует ст. 66 ГК",
+                "source_ids": ["L1"],
+            }
+        ]
+    }
+
+    result = normalize_verdicts(raw, clauses, sources)
+
+    assert result[0]["sources"][0]["reference_status"] == "repealed"
+    assert result[0]["sources"][0]["repeal_notice"] == (
+        "Утратила силу Законом № ЗРУ-372 от 14.05.2014."
+    )
+
+
 def test_logic_finding_without_pair_is_dropped():
     """ТЗ обещает показать оба конфликтующих пункта рядом."""
     raw = {
@@ -390,6 +463,44 @@ async def test_clause_edit_rewrites_contract_text(client, admin_headers):
     ).json()
     assert len(versions) == 2
     assert "2.1" in versions[0]["changes_description"]
+
+
+async def test_clause_history_returns_previous_text(client, admin_headers):
+    """R9: история пункта обязана нести прежнюю редакцию текста.
+
+    Без неё нельзя показать юристу, что именно изменилось («0,5% → 0,1%»):
+    колонка previous_text заполняется при правке, но наружу не отдавалась.
+    """
+    cid = await _make_contract(client, admin_headers)
+    items = (
+        await client.get(f"/api/contracts/{cid}/clauses", headers=admin_headers)
+    ).json()["items"]
+    target = next(item for item in items if item["anchor"] == "2.1")
+    original = target["content"]
+    updated = "Стоимость составляет 400 000 000 сум."
+
+    decision = await client.post(
+        f"/api/clauses/{target['id']}/decision",
+        json={"action": "edit", "new_text": updated},
+        headers=admin_headers,
+    )
+    assert decision.status_code == 200, decision.text
+
+    # Правка пересобирает дерево пунктов: у пункта новый идентификатор, а
+    # решения переезжают на него по якорю. Прежний id после этого отдаёт 404.
+    refreshed = (
+        await client.get(f"/api/contracts/{cid}/clauses", headers=admin_headers)
+    ).json()["items"]
+    moved = next(item for item in refreshed if item["anchor"] == "2.1")
+
+    response = await client.get(
+        f"/api/clauses/{moved['id']}/history", headers=admin_headers
+    )
+    assert response.status_code == 200, response.text
+    edit = next(row for row in response.json() if row["action"] == "edit")
+
+    assert edit["previous_text"] == original
+    assert edit["new_text"] == updated
 
 
 async def test_edit_decision_requires_new_text(client, admin_headers):

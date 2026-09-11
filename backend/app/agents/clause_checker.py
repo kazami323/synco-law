@@ -163,7 +163,13 @@ def build_query(clauses: list[dict], doc_type: str | None) -> str:
 
 
 def source_snapshot(source: dict) -> dict:
-    """Снапшот нормы на дату проверки — для воспроизводимости результата."""
+    """Снапшот нормы на дату проверки — для воспроизводимости результата.
+
+    Признаки отмены переносятся наравне с текстом: `status` — это статус
+    документа, у исторической статьи он остаётся `active`, и без
+    `reference_status` отменённая норма выглядела в карточке пункта
+    действующим правовым основанием.
+    """
     return {
         "document_title": source.get("document_title"),
         "document_number": source.get("document_number"),
@@ -173,6 +179,11 @@ def source_snapshot(source: dict) -> dict:
         "url": source.get("url"),
         "current_revision_date": source.get("current_revision_date"),
         "status": source.get("status"),
+        "reference_status": source.get("reference_status"),
+        "repealed_at": source.get("repealed_at"),
+        "historical_revision_date": source.get("historical_revision_date"),
+        "repeal_notice": source.get("repeal_notice"),
+        "repeal_law_url": source.get("repeal_law_url"),
     }
 
 

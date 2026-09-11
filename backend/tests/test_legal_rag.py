@@ -185,6 +185,99 @@ async def _seed_civil_code_with_repealed_article(session):
     await session.commit()
 
 
+async def _seed_uzbek_codes_with_foreign_lookalike_numbers(session):
+    """ГК/ТК/УК Республики Узбекистан со статьями тех же номеров, что часто
+    встречаются в запросах к иностранным кодексам (ст. 330 ГК РФ, ст. 57 ТК
+    РФ, ст. 105 УК РФ) — чтобы отличить совпадение номера статьи от совпадения
+    юрисдикции (D1, docs/SVOD_PROTOTYPE_DELTA.md, раздел 3)."""
+    civil = LegalDocument(
+        source="lex.uz",
+        source_id="civil-330",
+        language="ru",
+        jurisdiction="Uzbekistan",
+        doc_type="code",
+        title="Гражданский кодекс Республики Узбекистан (часть первая)",
+        url="https://lex.uz/ru/docs/civil-330",
+        status="active",
+    )
+    session.add(civil)
+    await session.flush()
+    session.add(
+        LegalArticle(
+            document_id=civil.id,
+            source_article_id="civil-330-art",
+            article_number="330",
+            title="Статья 330. Понятие неустойки",
+            content=(
+                "Статья 330. Неустойкой признаётся определённая законом или "
+                "договором денежная сумма, которую должник обязан уплатить "
+                "кредитору в случае неисполнения обязательства."
+            ),
+            content_hash="civil-330",
+            position=330,
+            url="https://lex.uz/ru/docs/civil-330#art",
+        )
+    )
+
+    labor = LegalDocument(
+        source="lex.uz",
+        source_id="labor-57",
+        language="ru",
+        jurisdiction="Uzbekistan",
+        doc_type="code",
+        title="Трудовой кодекс Республики Узбекистан",
+        url="https://lex.uz/ru/docs/labor-57",
+        status="active",
+    )
+    session.add(labor)
+    await session.flush()
+    session.add(
+        LegalArticle(
+            document_id=labor.id,
+            source_article_id="labor-57-art",
+            article_number="57",
+            title="Статья 57. Срочный трудовой договор",
+            content=(
+                "Статья 57. Срочный трудовой договор заключается в случаях, "
+                "когда трудовые отношения не могут быть установлены на "
+                "неопределённый срок."
+            ),
+            content_hash="labor-57",
+            position=57,
+            url="https://lex.uz/ru/docs/labor-57#art",
+        )
+    )
+
+    criminal = LegalDocument(
+        source="lex.uz",
+        source_id="criminal-105",
+        language="ru",
+        jurisdiction="Uzbekistan",
+        doc_type="code",
+        title="Уголовный кодекс Республики Узбекистан",
+        url="https://lex.uz/ru/docs/criminal-105",
+        status="active",
+    )
+    session.add(criminal)
+    await session.flush()
+    session.add(
+        LegalArticle(
+            document_id=criminal.id,
+            source_article_id="criminal-105-art",
+            article_number="105",
+            title="Статья 105. Умышленное причинение тяжкого телесного повреждения",
+            content=(
+                "Статья 105. Умышленное причинение тяжкого телесного "
+                "повреждения наказывается лишением свободы."
+            ),
+            content_hash="criminal-105",
+            position=105,
+            url="https://lex.uz/ru/docs/criminal-105#art",
+        )
+    )
+    await session.commit()
+
+
 @pytest.fixture(autouse=True)
 def no_legal_elasticsearch(monkeypatch):
     async def unavailable(**kwargs):
@@ -262,6 +355,55 @@ async def test_missing_exact_article_does_not_fall_back_to_another_act(db_factor
         )
 
     assert results == []
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "ст. 330 ГК РФ",
+        "ст. 57 ТК РФ",
+        "ст. 105 УК РФ",
+        "ст. 330 ГК Казахстана",
+    ],
+)
+async def test_foreign_jurisdiction_reference_does_not_resolve_to_uzbek_act(
+    db_factory, query
+):
+    """D1: маркер чужой юрисдикции (РФ, Казахстана) сейчас игнорируется —
+    ACT_REFERENCE_PATTERNS резолвит запрос в узбекский кодекс с тем же
+    номером статьи (legal_search.py:83, необязательная группа
+    `(?:руз|республики\\s+узбекистан)?`). Юрист получает чужую норму под
+    видом запрошенной. Пустой результат — приемлемо, подмена акта — нет."""
+    async with db_factory() as session:
+        await _seed_uzbek_codes_with_foreign_lookalike_numbers(session)
+        results = await legal_search.search_legal_articles(session, q=query, limit=8)
+
+    assert results == []
+
+
+@pytest.mark.parametrize(
+    "query,expected_article_number",
+    [
+        ("ст. 330 ГК РУз", "330"),
+        ("ст. 57 ТК РУз", "57"),
+        ("ст. 105 УК РУз", "105"),
+        ("Статья 330 Гражданского кодекса Республики Узбекистан", "330"),
+    ],
+)
+async def test_uzbek_jurisdiction_reference_still_resolves(
+    db_factory, query, expected_article_number
+):
+    """Контроль к D1: фикс не должен сломать основной сценарий — запрос с
+    явно узбекской юрисдикцией (или без указания юрисдикции вовсе) обязан
+    по-прежнему находить узбекскую норму."""
+    async with db_factory() as session:
+        await _seed_uzbek_codes_with_foreign_lookalike_numbers(session)
+        results = await legal_search.search_legal_articles(session, q=query, limit=8)
+
+    assert len(results) == 1
+    assert results[0]["engine"] == "sql_exact"
+    assert results[0]["article_number"] == expected_article_number
+    assert "Республики Узбекистан" in results[0]["document_title"]
 
 
 async def test_law_agent_uses_local_lexuz_context(db_factory, monkeypatch):

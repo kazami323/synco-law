@@ -637,6 +637,7 @@ def _decision_out(decision: ClauseDecision, current_hash: str | None) -> ClauseD
         id=decision.id,
         action=decision.action,
         comment=decision.comment,
+        previous_text=decision.previous_text,
         new_text=decision.new_text,
         decided_by=decision.decided_by,
         decided_by_name=decision.decided_by_name,

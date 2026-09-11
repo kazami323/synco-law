@@ -11,7 +11,7 @@ import {
   Pencil,
   SkipForward,
 } from "lucide-react";
-import { useState } from "react";
+import { useImperativeHandle, useState, type Ref } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
@@ -28,12 +28,24 @@ import {
   type Tone,
 } from "@/components/ui";
 
+/** Управление разбором снаружи: переход к пункту из карточки находки. */
+export interface ClauseReviewHandle {
+  /** Открыть пункт по якорю («4.2»). Неизвестный якорь игнорируется. */
+  openAnchor: (anchor: string) => void;
+}
+
 /**
  * Интерфейс «пункт за пунктом» из ТЗ, раздел 4: слева текст пункта, справа
  * найденные нормы и вердикт системы. Решение по каждому пункту принимает
  * юрист — система только предлагает.
  */
-export function ClauseReview({ contractId }: { contractId: string }) {
+export function ClauseReview({
+  contractId,
+  ref,
+}: {
+  contractId: string;
+  ref?: Ref<ClauseReviewHandle>;
+}) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -120,6 +132,22 @@ export function ClauseReview({ contractId }: { contractId: string }) {
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
+
+  /**
+   * Переход к пункту из карточки риска или находки логики (R13,
+   * docs/SVOD_PROTOTYPE_DELTA.md; в прототипе заказчика — `jumpTo(id)`).
+   * Вкладку переключает страница, сам пункт открываем здесь — через тот же
+   * `openClause`, чтобы переход не терял молча набранную правку.
+   *
+   * Пока пункты не загружены, `items` пуст, якорь не находится и открывать
+   * нечего — активного пункта в этом рендере ещё не существует.
+   */
+  useImperativeHandle(ref, () => ({
+    openAnchor(anchor: string) {
+      const target = items.find((item) => item.anchor === anchor);
+      if (target) openClause(target);
+    },
+  }));
 
   if (clauses.isLoading) {
     return (

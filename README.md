@@ -149,7 +149,16 @@ python -m scripts.reindex_laws
 ```bash
 cd backend
 .venv\Scripts\activate
-python scripts\seed_demo.py
+python -m scripts.seed_demo
+```
+
+Запуск файлом (`python scripts/seed_demo.py`) не работает: в `sys.path`
+попадает каталог скрипта, а не корень бэкенда, и пакет `app` не находится.
+
+В контейнере:
+
+```bash
+docker compose exec -e PYTHONPATH=/app backend python scripts/seed_demo.py
 ```
 
 Демо-логин:

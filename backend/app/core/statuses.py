@@ -9,7 +9,7 @@ frontend/src/components/contract-chips.tsx.
 модули отработали), а не кнопкой в интерфейсе.
 """
 
-from app.db.models import ContractStatus, Role
+from app.db.models import ContractStatus
 
 # status -> метаданные
 #   title      — название в интерфейсе
@@ -79,19 +79,10 @@ STATUS_CATALOGUE: dict[str, dict] = {
     },
 }
 
-# Статусы, в которых документ уже прошёл проверку модулями и результаты
-# актуальны. Правка текста после этого делает результаты устаревшими.
-REVIEWED_STATUSES: frozenset[str] = frozenset(
-    {
-        ContractStatus.ANALYZED.value,
-        ContractStatus.APPROVED.value,
-        ContractStatus.APPROVED_FINANCE.value,
-        ContractStatus.READY_TO_SIGN.value,
-    }
-)
-
-# Роли, которым ТЗ отдаёт перевод в «Финальный».
-FINALIZE_ROLES: frozenset[str] = frozenset({Role.HEAD.value, Role.ADMIN.value})
+# Права на переход в «Финальный» живут в permissions.py (право `finalize`).
+# Здесь их дублировать нельзя: набор ролей уже разошёлся с матрицей прав —
+# копия отдавала статус только руководителю и администратору, тогда как по
+# ТЗ (раздел 7) и по permissions.py он есть и у старшего юриста.
 
 
 def status_title(status: str | None) -> str:

@@ -250,6 +250,9 @@ class ClauseDecisionOut(BaseModel):
     id: uuid.UUID
     action: str
     comment: str | None = None
+    # Прежняя редакция пункта: без неё в истории не показать, что именно
+    # изменил юрист («0,5% → 0,1%»). Заполняется только у действия «изменить».
+    previous_text: str | None = None
     new_text: str | None = None
     decided_by: uuid.UUID | None = None
     decided_by_name: str | None = None

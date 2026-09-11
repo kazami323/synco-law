@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   CircleAlert,
+  CornerDownRight,
   Scale,
   ShieldAlert,
   Wrench,
@@ -56,7 +57,14 @@ function accentClass(tone: Tone) {
  * Модуль 2: расхождения внутри документа. ТЗ требует показывать оба
  * конфликтующих пункта рядом, чтобы юрист видел суть за секунду.
  */
-export function LogicFindings({ contractId }: { contractId: string }) {
+export function LogicFindings({
+  contractId,
+  onJumpToClause,
+}: {
+  contractId: string;
+  /** Переход к пункту. Не задан — номера пунктов остаются текстом. */
+  onJumpToClause?: (anchor: string) => void;
+}) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const [error, setError] = useState("");
@@ -153,6 +161,7 @@ export function LogicFindings({ contractId }: { contractId: string }) {
                     key={anchor}
                     anchor={anchor}
                     clause={byAnchor.get(anchor)}
+                    onJump={onJumpToClause}
                   />
                 ))}
               </div>
@@ -209,7 +218,14 @@ export function LogicFindings({ contractId }: { contractId: string }) {
  * Модуль 3: риски с позиции представляемой стороны — уровень, последствия
  * на практике и предложение по устранению.
  */
-export function RiskFindings({ contractId }: { contractId: string }) {
+export function RiskFindings({
+  contractId,
+  onJumpToClause,
+}: {
+  contractId: string;
+  /** Переход к пункту. Не задан — номера пунктов остаются текстом. */
+  onJumpToClause?: (anchor: string) => void;
+}) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const [error, setError] = useState("");
@@ -217,6 +233,14 @@ export function RiskFindings({ contractId }: { contractId: string }) {
   const findings = useQuery({
     queryKey: ["risk-findings", contractId],
     queryFn: () => api<RiskFinding[]>(`/api/contracts/${contractId}/risk-findings`),
+  });
+
+  // Якоря риска приходят от модели и бэкендом не сверяются с разбивкой
+  // (services/review.py: `risk.get("clause_anchors")`). Ведём в пункт только
+  // тогда, когда такой пункт в документе действительно есть.
+  const clauses = useQuery({
+    queryKey: ["clauses", contractId],
+    queryFn: () => api<ClauseList>(`/api/contracts/${contractId}/clauses`),
   });
 
   // Резюме Модуля 3 — «что критично поправить до подписания» (ТЗ, раздел 4).
@@ -258,6 +282,9 @@ export function RiskFindings({ contractId }: { contractId: string }) {
   }
 
   const canResolve = can(user, "confirm_clause");
+  const knownAnchors = new Set(
+    (clauses.data?.items ?? []).map((clause) => clause.anchor),
+  );
 
   return (
     <div className="space-y-3">
@@ -328,9 +355,16 @@ export function RiskFindings({ contractId }: { contractId: string }) {
               )}
 
               {finding.clause_anchors.length > 0 && (
-                <p className="text-xs text-outline">
-                  Пункты: {finding.clause_anchors.join(", ")}
-                </p>
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  {finding.clause_anchors.map((anchor) => (
+                    <ClauseJump
+                      key={anchor}
+                      anchor={anchor}
+                      onJump={onJumpToClause}
+                      known={knownAnchors.has(anchor)}
+                    />
+                  ))}
+                </div>
               )}
 
               {canResolve && !resolved && (
@@ -375,9 +409,11 @@ export function RiskFindings({ contractId }: { contractId: string }) {
 function ClauseExcerpt({
   anchor,
   clause,
+  onJump,
 }: {
   anchor: string;
   clause: Clause | undefined;
+  onJump?: (anchor: string) => void;
 }) {
   return (
     <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3">
@@ -387,7 +423,54 @@ function ClauseExcerpt({
       <p className="text-[13px] leading-relaxed text-on-surface-variant line-clamp-6">
         {clause?.content ?? "Пункт не найден в текущей редакции документа."}
       </p>
+      {clause && onJump && (
+        <div className="mt-2">
+          <ClauseJump anchor={anchor} onJump={onJump} />
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Номер пункта в находке — переход к самому пункту, а не строка на экране
+ * (R13, docs/SVOD_PROTOTYPE_DELTA.md, раздел 4.2; в прототипе заказчика это
+ * `jumpTo(id)`). Юрист не должен искать пункт руками по списку.
+ *
+ * Именно `<button>`: клик на неинтерактивном элементе — дефект доступности,
+ * уже разбирался в docs/AUDIT_2026-08-22.md.
+ */
+function ClauseJump({
+  anchor,
+  onJump,
+  known = true,
+}: {
+  anchor: string;
+  /** Не задан, если переходить некуда — тогда это просто номер пункта. */
+  onJump?: (anchor: string) => void;
+  /** Есть ли такой пункт в текущей редакции документа. */
+  known?: boolean;
+}) {
+  if (!onJump || !known) {
+    return (
+      <span className="text-xs text-outline">
+        Пункт {anchor}
+        {known ? "" : " — не найден в текущей редакции"}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => onJump(anchor)}
+      className="inline-flex items-center gap-1.5 rounded-md border border-outline-variant
+        bg-surface-container-lowest px-2 h-7 text-xs font-medium text-primary
+        cursor-pointer transition-colors hover:border-primary hover:bg-primary-fixed/40
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+    >
+      <CornerDownRight size={13} aria-hidden />К пункту {anchor}
+    </button>
   );
 }
 

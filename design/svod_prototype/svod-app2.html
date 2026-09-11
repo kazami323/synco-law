@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Свод — проверка договоров</title>
+<style>
+:root{
+  --canvas:#F3F1EA; --sheet:#FFFEFB; --panel:#FFFFFF;
+  --ink:#2A2723; --muted:#6E6860; --faint:#9E988D;
+  --line:#E7E2D6; --line-soft:#EFEBE0;
+  --accent:#2F5E4E; --accent-soft:#EAF0EC; --accent-ink:#234a3d;
+  --warn:#8C6410; --warn-soft:#F6EDD8;
+  --danger:#9E3E2E; --danger-soft:#F5E5DF;
+  --sel:#F1EEE4;
+  --serif:'Iowan Old Style','Palatino Linotype','Palatino','Georgia',serif;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --canvas:#16181A; --sheet:#212328; --panel:#1E2024;
+    --ink:#EAE7E0; --muted:#A6A096; --faint:#79746B;
+    --line:#2F323A; --line-soft:#282B32;
+    --accent:#7FB8A2; --accent-soft:#20302B; --accent-ink:#9ecdba;
+    --warn:#D3A24E; --warn-soft:#2E2818; --danger:#DE8A78; --danger-soft:#31201C;
+    --sel:#282A2F;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--canvas);color:var(--ink);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer;border:none;background:none}
+button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.spacer{flex:1}
+
+.topbar{display:flex;align-items:center;gap:14px;height:58px;padding:0 26px;border-bottom:0.5px solid var(--line);background:var(--canvas);position:sticky;top:0;z-index:30}
+.mark{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.01em;cursor:pointer}
+.mark .g{width:26px;height:26px;border-radius:7px;background:var(--accent);color:#fff;display:grid;place-items:center;font-family:var(--serif);font-size:15px}
+.crumb{font-size:13.5px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crumb b{color:var(--ink);font-weight:500}.crumb .sep{color:var(--faint);margin:0 8px}
+.crumb .lnk{cursor:pointer}.crumb .lnk:hover{color:var(--accent)}
+.ctx{display:inline-flex;align-items:center;font-size:13px;color:var(--muted);border:0.5px solid var(--line);border-radius:999px;padding:6px 13px}
+.ava{width:29px;height:29px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:12px;font-weight:600}
+
+.wrap{max-width:1120px;margin:0 auto;padding:32px 26px 72px}
+.narrow{max-width:760px}
+.screen{display:none}.screen.on{display:block}
+
+.h1{font-family:var(--serif);font-size:26px;font-weight:600;letter-spacing:-.01em}
+.h2{font-size:16px;font-weight:600}
+.sub{color:var(--muted);font-size:13.5px;margin-top:4px}
+.head{display:flex;align-items:flex-end;margin-bottom:22px;gap:16px}
+
+.pill{display:inline-flex;align-items:center;font-size:12px;padding:3px 10px;border-radius:999px}
+.pill.warn{color:var(--warn);background:var(--warn-soft)}
+.pill.dang{color:var(--danger);background:var(--danger-soft)}
+.pill.ok{color:var(--accent);background:var(--accent-soft)}
+.pill.q{color:var(--muted);background:var(--canvas);border:0.5px solid var(--line)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;font-size:14px;padding:10px 16px;border-radius:11px;border:0.5px solid var(--line);background:var(--sheet);transition:.12s}
+.btn:hover{border-color:var(--faint)}
+.btn.pri{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:500}
+.btn.pri:hover{background:var(--accent-ink)}
+.btn.sm{padding:8px 13px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:default}
+
+.cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
+.card{background:var(--sheet);border:0.5px solid var(--line);border-radius:14px;padding:20px;transition:.12s;cursor:pointer}
+.card:hover{border-color:var(--faint);transform:translateY(-1px)}
+.card .ct{font-family:var(--serif);font-size:17px;font-weight:600}
+
+.list{background:var(--sheet);border:0.5px solid var(--line);border-radius:14px;overflow:hidden}
+.item{display:flex;align-items:center;gap:15px;padding:17px 20px;border-bottom:0.5px solid var(--line-soft);cursor:pointer;transition:.1s}
+.item:last-child{border-bottom:none}.item:hover{background:var(--line-soft)}
+.item .nm{font-weight:500}
+
+.dictate{display:flex;align-items:center;gap:18px;background:var(--accent-soft);border:0.5px solid var(--accent);border-radius:14px;padding:18px 20px;margin-bottom:20px;flex-wrap:wrap}
+.dictate .dt{font-family:var(--serif);font-size:16px;font-weight:600;color:var(--accent-ink)}
+.dictate .dd{font-size:13px;color:var(--accent-ink);opacity:.85;margin-top:3px}
+.recdot{width:9px;height:9px;border-radius:50%;background:var(--danger);display:inline-block;margin-right:8px;vertical-align:1px}
+.pulse{animation:pl 1s ease-in-out infinite}@keyframes pl{0%,100%{opacity:1}50%{opacity:.3}}
+.recognized{margin-top:14px;padding-top:14px;border-top:0.5px solid var(--accent);width:100%}
+.reclbl{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--accent-ink);opacity:.8;font-weight:600;margin-bottom:9px}
+.recchips{display:flex;gap:8px;flex-wrap:wrap}
+.recchip{font-size:13px;background:var(--sheet);border:0.5px solid var(--accent);color:var(--accent-ink);border-radius:999px;padding:5px 12px}
+.recchip .k{color:var(--muted);margin-right:5px}
+
+.block{background:var(--sheet);border:0.5px solid var(--line);border-radius:14px;padding:22px;margin-bottom:16px}
+.field{margin-bottom:20px}.field:last-child{margin-bottom:0}
+.field > label{display:block;font-size:13px;font-weight:600;margin-bottom:9px}
+.field .hint{font-size:12.5px;color:var(--muted);margin-top:7px;line-height:1.4}
+.chips{display:flex;gap:9px;flex-wrap:wrap}
+.chip{font-size:14px;padding:9px 15px;border-radius:11px;border:0.5px solid var(--line);background:var(--panel);cursor:pointer;transition:.1s}
+.chip:hover{border-color:var(--faint)}
+.chip.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink);font-weight:500}
+.seg{display:inline-flex;background:var(--canvas);border:0.5px solid var(--line);border-radius:11px;padding:3px}
+.seg button{padding:9px 18px;border-radius:9px;font-size:14px;color:var(--muted);transition:.1s}
+.seg button.on{background:var(--sheet);color:var(--ink);font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.inp,textarea.inp{width:100%;font-family:inherit;font-size:15px;padding:11px 13px;border:0.5px solid var(--line);border-radius:11px;background:var(--panel);color:var(--ink)}
+textarea.inp{resize:vertical;min-height:74px;line-height:1.6}
+.inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:560px){.grid2{grid-template-columns:1fr}}
+
+.tmpl{display:flex;gap:13px;align-items:flex-start;border:0.5px solid var(--line);border-radius:11px;padding:14px 15px;cursor:pointer;transition:.1s;margin-top:9px}
+.tmpl:hover{border-color:var(--faint)}.tmpl.sel{border-color:var(--accent);background:var(--accent-soft)}
+.tmpl .tk{width:17px;height:17px;border-radius:50%;border:1.5px solid var(--faint);flex-shrink:0;margin-top:2px}
+.tmpl.sel .tk{border-color:var(--accent);background:var(--accent);box-shadow:inset 0 0 0 3px var(--accent-soft)}
+.tmpl .tn{font-weight:500}
+.tmpl .to{font-size:12.5px;color:var(--muted);margin-top:3px}
+
+.details-toggle{display:flex;align-items:center;justify-content:space-between;background:var(--sheet);border:0.5px solid var(--line);border-radius:12px;padding:15px 20px;cursor:pointer;margin-bottom:16px;font-weight:500;transition:.1s}
+.details-toggle:hover{border-color:var(--faint)}
+.details-toggle .state{font-size:13px;color:var(--muted);font-weight:400}
+.createbar{display:flex;justify-content:flex-end;gap:12px;margin-top:8px}
+.dropzone{border:1.5px dashed var(--line);border-radius:12px;padding:26px;text-align:center;color:var(--muted);cursor:pointer;font-size:13.5px}
+.dropzone:hover{border-color:var(--accent);color:var(--accent)}
+.load{display:none;flex-direction:column;align-items:center;gap:16px;padding:60px 0;color:var(--muted)}
+.spin{width:36px;height:36px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.stepper{display:flex;align-items:center;background:var(--sheet);border:0.5px solid var(--line);border-radius:13px;padding:7px;margin-bottom:22px;gap:6px;max-width:520px}
+.step{display:flex;align-items:center;gap:12px;padding:11px 18px;border-radius:10px;cursor:pointer;flex:1;transition:.12s}
+.step:hover{background:var(--line-soft)}.step.on{background:var(--accent-soft)}
+.step .num{width:24px;height:24px;border-radius:50%;background:var(--canvas);color:var(--muted);display:grid;place-items:center;font-size:12.5px;font-weight:600;flex-shrink:0}
+.step.on .num{background:var(--accent);color:#fff}
+.step .lab{font-size:14px;font-weight:500}.step .meta{font-size:11.5px;color:var(--muted);margin-top:1px}
+
+.stage{display:grid;grid-template-columns:1.55fr 1fr;gap:30px;align-items:start}
+@media(max-width:900px){.stage{grid-template-columns:1fr;gap:20px}}
+.paper{background:var(--sheet);border:0.5px solid var(--line);border-radius:14px;padding:44px 50px 52px}
+@media(max-width:560px){.paper{padding:30px 24px}}
+.dtitle{text-align:center;font-family:var(--serif);margin-bottom:30px}
+.dtitle .t{font-size:19px;font-weight:600;letter-spacing:.04em}
+.dtitle .m{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-top:16px}
+.pre{font-family:var(--serif);font-size:16px;line-height:1.9;margin-bottom:26px;color:var(--ink)}
+.clause{margin-bottom:24px}
+.ch{font-family:var(--serif);font-size:16.5px;font-weight:600;margin-bottom:8px;letter-spacing:.01em}
+.suba{position:relative;display:flex;gap:12px;padding:6px 10px 6px 12px;border-radius:0 8px 8px 0;cursor:pointer;transition:background .12s,border-color .12s;border-left:2px solid transparent;margin-left:-14px}
+.suba:hover{background:var(--line-soft)}.suba.sel{background:var(--sel);border-left-color:var(--accent)}
+.gut{width:10px;flex-shrink:0;display:flex;justify-content:center;padding-top:11px}
+.gut .dot{width:7px;height:7px;border-radius:50%}
+.stext{font-family:var(--serif);font-size:16px;line-height:1.9;color:var(--ink)}
+.suba.done .stext{color:var(--muted)}.snum{font-weight:600;color:var(--ink)}
+
+.panel{position:sticky;top:22px;background:var(--panel);border:0.5px solid var(--line);border-radius:14px;overflow:hidden}
+.phead{padding:18px 20px 15px;border-bottom:0.5px solid var(--line-soft)}
+.pkicker{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.ptitle{font-size:17px;font-weight:600;margin-top:4px;font-family:var(--serif)}
+.pbody{padding:6px 20px 20px}
+.ovline{font-size:13.5px;color:var(--muted);margin:14px 2px 10px;line-height:1.5}
+.att{display:flex;gap:12px;padding:14px 12px;border-radius:11px;cursor:pointer;transition:background .12s}
+.att:hover{background:var(--line-soft)}.att + .att{border-top:0.5px solid var(--line-soft)}
+.att .adot{width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-top:5px}
+.att .atit{font-size:14px;font-weight:500;line-height:1.35}
+.att .adesc{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.4}
+.att .atag{font-size:11px;color:var(--faint);margin-top:4px;display:inline-block}
+.sect{padding:18px 0;border-top:0.5px solid var(--line-soft)}.sect:first-child{border-top:none}
+.slabel{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:10px}
+.norm-art{font-family:var(--serif);font-size:17px;font-weight:600}
+.conf{display:inline-flex;font-size:12.5px;padding:3px 10px;border-radius:999px;margin-left:8px;vertical-align:2px}
+.conf.hi{color:var(--accent);background:var(--accent-soft)}.conf.md{color:var(--warn);background:var(--warn-soft)}
+.callout{padding:11px 13px;border-radius:11px;font-size:13.5px;line-height:1.5;margin-top:12px}
+.callout.warn{background:var(--warn-soft);color:var(--warn)}
+.expand{margin-top:12px;font-size:13.5px;color:var(--accent);cursor:pointer;font-weight:500}
+.logic{font-size:14px;line-height:1.65;color:var(--muted)}.logic b{color:var(--ink);font-weight:600}
+.pacts{display:flex;flex-direction:column;gap:9px;padding-top:20px;border-top:0.5px solid var(--line-soft)}
+.pbtn{display:inline-flex;align-items:center;justify-content:center;font-size:14px;padding:11px 16px;border-radius:11px;border:0.5px solid var(--line);background:var(--panel);color:var(--ink);transition:.12s}
+.pbtn:hover{background:var(--canvas);border-color:var(--faint)}
+.pbtn.pri{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:500}
+.pbtn.pri:hover{background:var(--accent-ink)}
+.actrow{display:flex;gap:9px}.actrow .pbtn{flex:1}
+.donebar{display:flex;align-items:center;font-size:14px;color:var(--accent);padding:11px 0;font-weight:500}
+.back{font-size:13px;color:var(--muted);cursor:pointer;margin-bottom:8px}.back:hover{color:var(--ink)}
+.editor textarea{width:100%;font-family:var(--serif);font-size:16px;line-height:1.85;padding:12px 14px;border:0.5px solid var(--accent);border-radius:11px;background:var(--panel);color:var(--ink);resize:vertical;min-height:96px}
+.note{margin-top:14px;padding:11px 13px;background:var(--warn-soft);border-radius:11px;font-size:13px;color:var(--warn);line-height:1.5}
+.gonext{margin-top:16px;padding-top:18px;border-top:0.5px solid var(--line-soft)}
+
+.risktop{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.stale{display:flex;align-items:center;gap:10px;padding:12px 15px;background:var(--warn-soft);border:0.5px solid var(--warn);border-radius:12px;font-size:13.5px;color:var(--warn);margin-bottom:16px}
+.runbox{text-align:center;padding:56px 24px;background:var(--sheet);border:0.5px solid var(--line);border-radius:14px}
+.runbox .rt{font-family:var(--serif);font-size:19px;font-weight:600;margin-bottom:8px}
+.rsummary{display:flex;gap:9px;margin-bottom:16px;flex-wrap:wrap}
+.risk{display:flex;gap:15px;padding:18px 20px;border:0.5px solid var(--line);border-radius:13px;background:var(--sheet);margin-bottom:12px}
+.risk .sevbar{width:4px;border-radius:2px;flex-shrink:0}
+.risk .rt2{font-size:15px;font-weight:600;margin-bottom:4px}
+.risk .rd{font-size:13.5px;color:var(--muted);line-height:1.6}
+.risk .rf{margin-top:11px}
+.clausechip{display:inline-flex;font-size:12.5px;color:var(--accent);background:var(--accent-soft);padding:5px 12px;border-radius:999px;cursor:pointer}
+
+.scrim{position:fixed;inset:0;background:rgba(30,25,20,.4);z-index:60;display:none;opacity:0;transition:.18s}.scrim.on{display:block;opacity:1}
+.drawer{position:fixed;top:0;right:0;height:100%;width:min(440px,92vw);background:var(--panel);z-index:70;box-shadow:-10px 0 34px rgba(0,0,0,.16);transform:translateX(100%);transition:.22s;display:flex;flex-direction:column}
+.drawer.on{transform:none}
+.dhead{display:flex;align-items:center;padding:18px 20px;border-bottom:0.5px solid var(--line)}
+.dhead b{font-family:var(--serif);font-size:16px}.dhead .x{margin-left:auto;cursor:pointer;color:var(--muted);font-size:22px;line-height:1}
+.dbody{padding:20px;overflow:auto}
+.dbody .art{font-family:var(--serif);font-size:15.5px;line-height:1.85;color:var(--ink);background:var(--canvas);border:0.5px solid var(--line);border-radius:11px;padding:16px;margin:12px 0}
+.kv{font-size:13px;line-height:1.55;color:var(--muted);margin-bottom:9px}.kv b{color:var(--ink)}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--sheet);font-size:13.5px;padding:11px 18px;border-radius:999px;z-index:90;opacity:0;transition:.2s;pointer-events:none}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation-duration:.01ms!important}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="mark" onclick="go('projects')"><span class="g">С</span><span>Свод</span></div>
+  <div class="crumb" id="crumb"></div>
+  <div class="spacer"></div>
+  <div id="topright"></div>
+  <div class="ava" title="Анна Ковалёва">АК</div>
+</div>
+
+<div class="wrap">
+
+  <div class="screen on" id="s-projects">
+    <div class="head"><div><div class="h1">Проекты</div><div class="sub">Дела, над которыми вы работаете</div></div><div class="spacer"></div>
+      <button class="btn" onclick="toast('В прототипе проложен один маршрут — откройте «Контракты Q3»')">Новый проект</button></div>
+    <div class="cards">
+      <div class="card" onclick="go('project')"><div style="display:flex;align-items:center"><div class="ct">Контракты Q3</div><div class="spacer"></div><span class="pill dang">1 замечание</span></div><div class="sub">3 документа · обновлён сегодня</div></div>
+      <div class="card" onclick="toast('Открыт только проект «Контракты Q3»')"><div class="ct">Аренда офиса</div><div class="sub">1 документ · 12 авг</div></div>
+      <div class="card" onclick="toast('Открыт только проект «Контракты Q3»')"><div class="ct">NDA с подрядчиками</div><div class="sub">2 документа · 4 авг</div></div>
+    </div>
+  </div>
+
+  <div class="screen" id="s-project">
+    <div class="head"><div><div class="h1">Контракты Q3</div><div class="sub">3 документа</div></div><div class="spacer"></div>
+      <button class="btn pri" onclick="startCreate()">Новый документ</button></div>
+    <div class="list">
+      <div class="item" onclick="openDoc()"><div style="flex:1"><div class="nm">Договор поставки № 2026‑114</div><div class="sub">Поставка · открыт сегодня</div></div><span class="pill dang">4 замечания</span></div>
+      <div class="item" onclick="toast('В прототипе открыт документ № 2026‑114')"><div style="flex:1"><div class="nm">Договор поставки № 2026‑110</div><div class="sub">Поставка · 18 авг</div></div><span class="pill ok">подтверждён</span></div>
+      <div class="item" onclick="toast('В прототипе открыт документ № 2026‑114')"><div style="flex:1"><div class="nm">Спецификация № 3</div><div class="sub">Приложение · 15 авг</div></div><span class="pill q">черновик</span></div>
+    </div>
+  </div>
+
+  <div class="screen" id="s-create">
+    <div class="narrow">
+      <div class="h1" style="margin-bottom:6px">Новый документ</div>
+      <div class="sub" style="margin-bottom:22px">Задайте главное — тип, чью сторону вы ведёте и откуда взять шаблон. Остальное можно уточнить или надиктовать.</div>
+
+      <div id="c-load" class="load"><div class="spin"></div><div id="c-load-t">Генерирую черновик…</div></div>
+
+      <div id="c-main">
+        <div class="dictate">
+          <div style="flex:1;min-width:220px">
+            <div class="dt">Расскажите о договоре голосом</div>
+            <div class="dd">ИИ разложит сказанное по полям ниже — печатать не нужно</div>
+          </div>
+          <button class="btn" id="dictate" onclick="dictateCreate()"><span id="dictate-t">Надиктовать голосом</span></button>
+          <div id="recognized" class="recognized" style="display:none">
+            <div class="reclbl">Распознано и разложено по полям</div>
+            <div class="recchips" id="recchips"></div>
+          </div>
+        </div>
+
+        <div class="block">
+          <div class="field">
+            <label>Тип документа</label>
+            <div class="chips" id="type-chips">
+              <button class="chip sel" onclick="chooseChip(this,'type-chips')">Договор поставки</button>
+              <button class="chip" onclick="chooseChip(this,'type-chips')">Оказание услуг</button>
+              <button class="chip" onclick="chooseChip(this,'type-chips')">Аренда</button>
+              <button class="chip" onclick="chooseChip(this,'type-chips')">NDA</button>
+            </div>
+            <div class="hint">Тип задаёт набор обязательных пунктов и правовую область — Свод сам знает, что спросить.</div>
+          </div>
+          <div class="field">
+            <label>Я представляю</label>
+            <div class="seg" id="side-create"><button class="on" onclick="chooseSeg(this,'side-create')">Покупателя</button><button onclick="chooseSeg(this,'side-create')">Поставщика</button></div>
+            <div class="hint">От этого зависит, в чью пользу формулировать спорные условия и как считать риски.</div>
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label>Источник шаблона</label>
+            <div class="chips" id="src-chips">
+              <button class="chip sel" onclick="chooseSrc(this,'mine')">Мои шаблоны</button>
+              <button class="chip" onclick="chooseSrc(this,'firm')">Шаблоны фирмы</button>
+              <button class="chip" onclick="chooseSrc(this,'blank')">Сгенерировать с нуля</button>
+            </div>
+            <div id="tmpl-list"></div>
+          </div>
+        </div>
+
+        <div class="details-toggle" onclick="toggleDetails()"><span>Уточнить детали</span><span class="state" id="det-state">необязательно · раскрыть</span></div>
+        <div class="block" id="details" style="display:none">
+          <div class="field">
+            <label>Право и язык договора</label>
+            <div class="grid2">
+              <div class="chips" id="law-chips"><button class="chip sel" onclick="chooseChip(this,'law-chips')">Право РФ</button><button class="chip" onclick="chooseChip(this,'law-chips')">Право Узбекистана</button></div>
+              <div class="chips" id="lang-chips"><button class="chip sel" onclick="chooseChip(this,'lang-chips')">Русский</button><button class="chip" onclick="chooseChip(this,'lang-chips')">Узбекский</button></div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Ключевые условия</label>
+            <div class="grid2">
+              <input class="inp" id="d-price" placeholder="Цена и предоплата">
+              <input class="inp" id="d-term" placeholder="Срок поставки и приёмки">
+              <input class="inp" id="d-law" placeholder="Подсудность">
+              <input class="inp" id="d-liab" placeholder="Ответственность и неустойка">
+            </div>
+            <div class="hint">Что зададите здесь — Свод сгенерирует сразу правильно, и половина замечаний на разборе не появится.</div>
+          </div>
+          <div class="field">
+            <label>Контрагент</label>
+            <div style="display:flex;gap:11px"><input class="inp" id="d-party" placeholder="Название второй стороны"><button class="btn sm" onclick="toast('Реквизиты подтянуты из реестра (демо)')">Подтянуть реквизиты</button></div>
+          </div>
+          <div class="field">
+            <label>Особые оговорки</label>
+            <textarea class="inp" id="d-special" placeholder="Что обязательно учесть: «штраф не выше 10%», «без автопролонгации», «NDA внутри»"></textarea>
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label>Приложения</label>
+            <div class="dropzone" onclick="toast('В прототипе прикрепление имитируется')">Прикрепить спецификацию, доверенность или прошлый договор</div>
+          </div>
+        </div>
+
+        <div class="createbar">
+          <button class="btn" onclick="go('project')">Отмена</button>
+          <button class="btn pri" onclick="generate()">Создать документ</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen" id="s-workspace">
+    <div class="stepper" id="stepper"></div>
+    <div id="pane-review">
+      <div class="stage">
+        <div class="paper">
+          <div class="dtitle"><div class="t">ДОГОВОР ПОСТАВКИ № 2026‑114</div><div class="m"><span>г. Москва</span><span>25 августа 2026 г.</span></div></div>
+          <div class="pre">ООО «Пример», именуемое в дальнейшем «Поставщик», и ООО «Клиент», именуемое в дальнейшем «Покупатель», заключили настоящий договор о нижеследующем:</div>
+          <div id="doc"></div>
+        </div>
+        <div class="panel" id="panel"></div>
+      </div>
+    </div>
+    <div id="pane-risks" style="display:none">
+      <div class="risktop">
+        <div style="flex:1;min-width:220px"><div class="h1" style="font-size:22px">Риски договора</div><div class="sub">Оценка всего документа от лица выбранной стороны</div></div>
+        <div class="seg" id="side-seg"><button onclick="setSide('Покупателя')">Покупатель</button><button onclick="setSide('Поставщика')">Поставщик</button></div>
+        <button class="btn sm" onclick="switchTab('review')">Назад к разбору</button>
+      </div>
+      <div id="risk-body"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="scrim" id="scrim" onclick="closeNorm()"></div>
+<aside class="drawer" id="drawer">
+  <div class="dhead"><b id="d-art"></b><span class="x" onclick="closeNorm()">×</span></div>
+  <div class="dbody" id="d-body"></div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function $(id){return document.getElementById(id);}
+
+var CRUMBS={
+  projects:'',
+  project:'<span class="lnk" onclick="go(\'projects\')">Проекты</span><span class="sep">/</span><b>Контракты Q3</b>',
+  create:'<span class="lnk" onclick="go(\'projects\')">Проекты</span><span class="sep">/</span><span class="lnk" onclick="go(\'project\')">Контракты Q3</span><span class="sep">/</span><b>Новый документ</b>',
+  workspace:'<span class="lnk" onclick="go(\'projects\')">Проекты</span><span class="sep">/</span><span class="lnk" onclick="go(\'project\')">Контракты Q3</span><span class="sep">/</span><b>Договор поставки № 2026‑114</b>'
+};
+function go(s){document.querySelectorAll('.screen').forEach(function(e){e.classList.remove('on');});$('s-'+s).classList.add('on');$('crumb').innerHTML=CRUMBS[s]||'';$('topright').innerHTML=s==='workspace'?'<div class="ctx">Сторона: '+doc.side.replace('а','')+'</div>':'';window.scrollTo(0,0);}
+function startCreate(){go('create');}
+function openDoc(){tab='review';go('workspace');switchTab('review');}
+
+function chooseChip(btn,group){$(group).querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel');});btn.classList.add('sel');}
+function chooseSeg(btn,group){$(group).querySelectorAll('button').forEach(function(x){x.classList.remove('on');});btn.classList.add('on');}
+var TMPL={
+  mine:[{n:'Поставка — моя редакция 2025',o:'мой шаблон · обновлён 12 авг 2026'},{n:'Поставка с авансом',o:'мой шаблон · обновлён 3 июн 2026'}],
+  firm:[{n:'Поставка — стандарт юротдела',o:'шаблон фирмы · обновлён 20 авг 2026'},{n:'Рамочный договор поставки',o:'шаблон фирмы · обновлён 15 июл 2026'}],
+  blank:[]
+};
+function chooseSrc(btn,src){$('src-chips').querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel');});btn.classList.add('sel');
+  var list=$('tmpl-list');
+  if(src==='blank'){list.innerHTML='<div class="hint" style="margin-top:12px">Документ соберётся с нуля по типовой структуре и требованиям закона — без готового шаблона.</div>';return;}
+  var arr=TMPL[src]||[];
+  list.innerHTML=arr.map(function(t,i){return '<div class="tmpl'+(i===0?' sel':'')+'" onclick="chooseTmpl(this)"><div class="tk"></div><div><div class="tn">'+t.n+'</div><div class="to">'+t.o+'</div></div></div>';}).join('');
+}
+function chooseTmpl(el){document.querySelectorAll('#tmpl-list .tmpl').forEach(function(t){t.classList.remove('sel');});el.classList.add('sel');}
+var detailsOpen=false;
+function toggleDetails(){detailsOpen=!detailsOpen;$('details').style.display=detailsOpen?'block':'none';$('det-state').textContent=detailsOpen?'свернуть':'необязательно · раскрыть';}
+function openDetails(){if(!detailsOpen)toggleDetails();}
+function dictateCreate(){
+  var b=$('dictate'),t=$('dictate-t');b.disabled=true;t.innerHTML='<span class="recdot pulse"></span>Слушаю…';
+  setTimeout(function(){
+    $('type-chips').querySelectorAll('.chip').forEach(function(x){x.classList.toggle('sel',x.textContent==='Договор поставки');});
+    $('side-create').querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x.textContent==='Покупателя');});
+    openDetails();
+    $('law-chips').querySelectorAll('.chip').forEach(function(x){x.classList.toggle('sel',x.textContent==='Право РФ');});
+    $('d-price').value='Аванс 30%';$('d-term').value='Приёмка 14 дней';$('d-law').value='Арбитражный суд г. Москвы';
+    var chips=[['Тип','Договор поставки'],['Сторона','Покупатель'],['Право','РФ'],['Предоплата','30%'],['Приёмка','14 дней'],['Подсудность','Арбитраж Москвы']];
+    $('recchips').innerHTML=chips.map(function(c){return '<span class="recchip"><span class="k">'+c[0]+':</span>'+c[1]+'</span>';}).join('');
+    $('recognized').style.display='block';
+    t.textContent='Надиктовать заново';b.disabled=false;
+    toast('Свод распознал речь и заполнил поля');
+  },1500);
+}
+function generate(){$('c-main').style.display='none';$('c-load-t').textContent='Генерирую черновик по вашим условиям…';$('c-load').style.display='flex';setTimeout(function(){$('c-load').style.display='none';$('c-main').style.display='block';openDoc();toast('Черновик готов — 24 пункта');},1600);}
+
+var doc={
+  side:'Покупателя',
+  clauses:[
+    {n:'1',title:'Предмет договора',subs:[{id:'1.1',text:'Поставщик обязуется передать товар в собственность Покупателя, а Покупатель — принять и оплатить его.',status:'ok',norm:{art:'ст. 506 ГК РФ',conf:'hi'}}]},
+    {n:'2',title:'Цена и порядок расчётов',subs:[{id:'2.1',text:'Оплата производится в течение 10 банковских дней с даты выставления счёта.',status:'ok',norm:{art:'ст. 516 ГК РФ',conf:'hi'}}]},
+    {n:'3',title:'Ответственность сторон',subs:[
+      {id:'3.1',text:'За просрочку поставки Поставщик уплачивает Покупателю неустойку в размере 0,1% от стоимости непоставленного товара за каждый день просрочки.',status:'ok',norm:{art:'ст. 330 ГК РФ',conf:'hi'}},
+      {id:'3.2',text:'При нарушении сроков оплаты Покупатель уплачивает неустойку в размере 0,1% за каждый день просрочки.',status:'uncertain',norm:{art:'ст. 332 ГК РФ',conf:'md',warn:'здесь неустойка договорная — возможно, применима ст. 330, а не 332.'},logic:'Ставка совпадает с п.3.1 (0,1%) — рассогласования не видно.',hist:'изменено сегодня · 0,5% → 0,1%'},
+      {id:'3.3',text:'Датой исполнения обязательства по поставке считается дата подписания товарной накладной обеими сторонами.',status:'ok'},
+      {id:'3.4',text:'Стороны освобождаются от ответственности при наступлении обстоятельств непреодолимой силы.',status:'nonorm'}
+    ]},
+    {n:'4',title:'Сроки поставки',subs:[{id:'4.1',text:'Поставка товара осуществляется в течение 30 календарных дней с момента поступления оплаты.',status:'conflict',logic:'Срок 30 дней противоречит сроку приёмки в п.5.1 — там указано 45 дней.',norm:{art:'ст. 314 ГК РФ',conf:'hi'}}]},
+    {n:'5',title:'Приёмка товара',subs:[{id:'5.1',text:'Покупатель проводит приёмку товара по количеству и качеству в течение 45 дней с даты поставки.',status:'conflict',logic:'Срок приёмки 45 дней рассогласован со сроком поставки 30 дней в п.4.1.',norm:{art:'ст. 513 ГК РФ',conf:'hi'}}]}
+  ],
+  missing:[{id:'m1',text:'Нет пункта о разрешении споров',desc:'Не определены подсудность и применимое право — при конфликте порядок разбирательства заранее неясен.'}]
+};
+var NORMS={
+  'ст. 332 ГК РФ':{text:'Кредитор вправе требовать неустойку, определённую законом (законную неустойку), независимо от того, предусмотрена ли она соглашением сторон. Размер законной неустойки может быть увеличен соглашением, если это не запрещено законом.',why:'пункт вводит неустойку за просрочку, ИИ сопоставил его с нормой о неустойке.',conf:'md',warn:'здесь неустойка договорная — возможно, применима ст. 330, а не 332.'},
+  'ст. 330 ГК РФ':{text:'Неустойкой признаётся определённая договором или законом денежная сумма, которую должник обязан уплатить кредитору при неисполнении или ненадлежащем исполнении обязательства, в частности при просрочке.',why:'пункт устанавливает договорную неустойку за просрочку.',conf:'hi'},
+  'ст. 314 ГК РФ':{text:'Если обязательство предусматривает срок исполнения, оно должно быть исполнено в этот срок.',why:'пункт задаёт срок исполнения обязательства по поставке.',conf:'hi'}
+};
+var RISKS={
+  'Покупателя':[
+    {sev:'high',title:'Ответственность без ограничения',desc:'В договоре нет потолка ответственности — Покупатель отвечает в полном размере убытков, включая упущенную выгоду.',missing:true},
+    {sev:'high',title:'Не определён порядок разрешения споров',desc:'Нет пункта о подсудности и применимом праве — при конфликте место и порядок разбирательства заранее неясны.',missing:true},
+    {sev:'med',title:'Рассогласование сроков поставки и приёмки',desc:'Поставка — 30 дней (п.4.1), приёмка — 45 дней (п.5.1). Разрыв создаёт неопределённость по срокам претензий.',clause:'4.1'},
+    {sev:'low',title:'Растянутый срок приёмки',desc:'45 дней на приёмку (п.5.1) долго держат вопрос качества открытым, но работают скорее в пользу Покупателя.',clause:'5.1'},
+    {sev:'down',title:'Неустойка Покупателя снижена',desc:'После правки п.3.2 неустойка за просрочку оплаты снижена 0,5% → 0,1% — штрафная нагрузка на Покупателя упала.',clause:'3.2'}
+  ],
+  'Поставщика':[
+    {sev:'high',title:'Просрочка оплаты слабо обеспечена',desc:'После снижения неустойки в п.3.2 до 0,1% просрочка оплаты Покупателем почти ничем не стимулируется.',clause:'3.2'},
+    {sev:'med',title:'Короткий срок поставки',desc:'30 дней на поставку (п.4.1) при 45 днях на приёмку — риск не уложиться и попасть на неустойку по п.3.1.',clause:'4.1'},
+    {sev:'med',title:'Ответственность без ограничения',desc:'Нет потолка ответственности — Поставщик также отвечает без предела, включая упущенную выгоду Покупателя.',missing:true}
+  ]
+};
+
+var sel=null, editing=false, tab='review', risksRun=false, risksStale=false;
+function findSub(id){for(var c of doc.clauses)for(var s of c.subs)if(s.id===id)return {c:c,s:s};return null;}
+function dotColor(st){return st==='conflict'?'var(--danger)':st==='nonorm'||st==='uncertain'?'var(--warn)':'transparent';}
+function buildIssues(){var n=0;doc.clauses.forEach(function(c){c.subs.forEach(function(s){if(!s.confirmed&&(s.status==='conflict'||s.status==='nonorm'||s.status==='uncertain'))n++;});});return n+doc.missing.length;}
+
+function renderStepper(){
+  var iss=buildIssues();var rm=!risksRun?'не проверено':(risksStale?'нужно перезапустить':'от лица: '+doc.side.replace('а',''));
+  $('stepper').innerHTML='<div class="step'+(tab==='review'?' on':'')+'" onclick="switchTab(\'review\')"><span class="num">1</span><div><div class="lab">Разбор</div><div class="meta">'+(iss?iss+' замечаний':'всё согласовано')+'</div></div></div>'
+    +'<div class="step'+(tab==='risks'?' on':'')+'" onclick="switchTab(\'risks\')"><span class="num">2</span><div><div class="lab">Риски</div><div class="meta">'+rm+'</div></div></div>';
+}
+function switchTab(t){tab=t;$('pane-review').style.display=t==='review'?'block':'none';$('pane-risks').style.display=t==='risks'?'block':'none';if(t==='risks')renderRisks();else{renderDoc();renderPanel();}renderStepper();window.scrollTo(0,0);}
+
+function renderDoc(){
+  var h='';
+  doc.clauses.forEach(function(c){
+    h+='<div class="clause"><div class="ch">'+c.n+'. '+c.title+'</div>';
+    c.subs.forEach(function(s){
+      var done=(s.status==='ok'||s.confirmed);var col=s.confirmed?'transparent':dotColor(s.status);
+      h+='<div class="suba'+(sel===s.id?' sel':'')+(done?' done':'')+'" onclick="pick(\''+s.id+'\')" tabindex="0" onkeydown="if(event.key===\'Enter\')pick(\''+s.id+'\')"><div class="gut"><span class="dot" style="background:'+col+'"></span></div><div class="stext"><span class="snum">'+s.id+'.</span> '+s.text+'</div></div>';
+    });
+    h+='</div>';
+  });
+  $('doc').innerHTML=h;
+}
+
+function renderPanel(){
+  if(!sel){renderOverview();return;}
+  var f=findSub(sel);if(!f){renderOverview();return;}
+  var s=f.s;
+  var h='<div class="phead"><div class="back" onclick="pick(null)">Назад к обзору</div><div class="pkicker">Пункт '+s.id+'</div><div class="ptitle">'+f.c.title+'</div></div><div class="pbody">';
+  if(editing){
+    h+='<div class="sect editor" style="border:none"><div class="slabel">Редактирование пункта</div><textarea id="ed">'+s.text+'</textarea><div class="actrow" style="margin-top:12px"><button class="pbtn pri" onclick="saveEdit()">Сохранить</button><button class="pbtn" onclick="editing=false;renderPanel()">Отмена</button></div></div></div>';
+    $('panel').innerHTML=h;setTimeout(function(){var a=$('ed');if(a){a.focus();a.setSelectionRange(a.value.length,a.value.length);}},30);return;
+  }
+  h+='<div class="sect"><div class="slabel">Правовая база</div>';
+  if(s.norm){
+    var cf=s.confirmed?'<span class="conf hi">подтверждено</span>':(s.norm.conf==='md'?'<span class="conf md">уверенность средняя</span>':'<span class="conf hi">уверенность высокая</span>');
+    h+='<div><span class="norm-art">'+s.norm.art+'</span>'+cf+'</div>';
+    if(s.norm.warn&&!s.confirmed)h+='<div class="callout warn">Проверьте: '+s.norm.warn+'</div>';
+    h+='<div class="expand" onclick="openNorm(\''+s.norm.art+'\')">Открыть текст нормы и обоснование</div>';
+  }else{
+    h+='<div class="callout warn">Норма не выбрана. ИИ может подобрать подходящую.</div><div class="expand" onclick="toast(\'ИИ подбирает норму…\')">Подобрать норму</div>';
+  }
+  h+='</div>';
+  if(s.logic){var conf=s.status==='conflict';h+='<div class="sect"><div class="slabel">Логика между пунктами</div><div class="logic"><b>'+(conf?'Найдено рассогласование. ':'Находка ИИ, ждёт подтверждения. ')+'</b>'+s.logic+'</div></div>';}
+  if(s.hist)h+='<div class="sect" style="padding-bottom:6px"><div class="logic" style="color:var(--faint);font-size:12.5px">'+s.hist+' · <span class="expand" style="margin:0;font-size:12.5px;display:inline" onclick="toast(\'История: 0,5% → 0,1% (сегодня, вы)\')">история</span></div></div>';
+  if(s.note)h+='<div class="note">'+s.note+'</div>';
+  h+='<div class="pacts">';
+  if(s.confirmed)h+='<div class="donebar">Пункт подтверждён</div>';
+  else h+='<button class="pbtn pri" onclick="confirmSub()">Подтвердить пункт</button>';
+  h+='<div class="actrow"><button class="pbtn" onclick="editing=true;renderPanel()">Редактировать</button><button class="pbtn" onclick="addNote()">Заметка</button></div></div></div>';
+  $('panel').innerHTML=h;
+}
+
+function renderOverview(){
+  var items=[];
+  doc.missing.forEach(function(m){items.push({col:'var(--danger)',t:m.text,d:m.desc,tag:'пропуск',jump:null});});
+  doc.clauses.forEach(function(c){c.subs.forEach(function(s){
+    if(s.confirmed)return;
+    if(s.status==='conflict')items.push({col:'var(--danger)',t:'п.'+s.id+' — рассогласование сроков',d:s.logic,tag:'конфликт',jump:s.id});
+    else if(s.status==='uncertain')items.push({col:'var(--warn)',t:'п.'+s.id+' — привязка под вопросом',d:s.norm&&s.norm.warn?('Проверьте: '+s.norm.warn):'',tag:'уверенность',jump:s.id});
+    else if(s.status==='nonorm')items.push({col:'var(--warn)',t:'п.'+s.id+' — норма не выбрана',d:'Пункт не привязан к правовой базе.',tag:'без нормы',jump:s.id});
+  });});
+  var h='<div class="phead"><div class="pkicker">Обзор</div><div class="ptitle">Что требует внимания</div></div><div class="pbody">';
+  if(items.length===0){
+    h+='<div class="ovline" style="color:var(--accent);padding:8px 2px">Замечаний нет — пункты увязаны и проверены.</div>';
+  }else{
+    h+='<div class="ovline">Начните сверху — это самое серьёзное. Нажмите на пункт, чтобы разобрать его.</div>';
+    items.forEach(function(x){h+='<div class="att" '+(x.jump?'onclick="pick(\''+x.jump+'\')"':'onclick="toast(\'Можно предложить формулировку пропущенного пункта\')"')+'><span class="adot" style="background:'+x.col+'"></span><div><div class="atit">'+x.t+'</div>'+(x.d?'<div class="adesc">'+x.d+'</div>':'')+'<span class="atag">'+x.tag+'</span></div></div>';});
+  }
+  h+='<div class="gonext"><button class="pbtn pri" onclick="switchTab(\'risks\')">Перейти к рискам</button></div></div>';
+  $('panel').innerHTML=h;
+}
+
+function pick(id){sel=id;editing=false;renderDoc();renderPanel();if(id){var el=document.querySelector('.suba.sel');if(el)el.scrollIntoView({behavior:'smooth',block:'center'});}}
+function markStale(){if(risksRun)risksStale=true;}
+function confirmSub(){var f=findSub(sel);if(!f)return;f.s.confirmed=true;f.s.status='ok';markStale();renderDoc();renderPanel();renderStepper();toast('Пункт '+sel+' подтверждён');}
+function saveEdit(){var a=$('ed');var f=findSub(sel);if(a&&f){var nv=a.value.trim();if(nv&&nv!==f.s.text){f.s.text=nv;f.s.hist='изменено сейчас · вручную';markStale();}}editing=false;renderDoc();renderPanel();toast('Пункт '+sel+' обновлён');}
+function addNote(){var f=findSub(sel);if(!f)return;f.s.note='Заметка: уточнить у налоговой перед подписанием.';renderPanel();toast('Заметка добавлена');}
+
+function setSide(side){doc.side=side;$('topright').innerHTML='<div class="ctx">Сторона: '+side.replace('а','')+'</div>';renderRisks();renderStepper();}
+function runRisks(){$('risk-body').innerHTML='<div class="load" style="display:flex"><div class="spin"></div><div>Оцениваю риски по всему документу…</div></div>';setTimeout(function(){risksRun=true;risksStale=false;renderRisks();renderStepper();toast('Проверка рисков завершена');},1100);}
+function sevInfo(sev){if(sev==='high')return{c:'var(--danger)',bg:'var(--danger-soft)',t:'высокий'};if(sev==='med')return{c:'var(--warn)',bg:'var(--warn-soft)',t:'средний'};if(sev==='down')return{c:'var(--accent)',bg:'var(--accent-soft)',t:'снижен'};return{c:'var(--faint)',bg:'var(--canvas)',t:'низкий'};}
+function renderRisks(){
+  document.querySelectorAll('#side-seg button').forEach(function(b){b.classList.toggle('on',b.textContent===doc.side.replace('а',''));});
+  var body=$('risk-body');
+  if(!risksRun){body.innerHTML='<div class="runbox"><div class="rt">Проверка рисков не запускалась</div><div class="sub" style="max-width:460px;margin:0 auto 20px">Риск оценивается по всему документу от лица выбранной стороны — отдельным проходом, после того как пункты увязаны и логика проверена.</div><button class="btn pri" onclick="runRisks()">Проверить риски за '+(doc.side==='Покупателя'?'Покупателя':'Поставщика')+'</button></div>';return;}
+  var order={high:0,med:1,low:2,down:3};
+  var list=(RISKS[doc.side]||[]).slice().sort(function(a,b){return order[a.sev]-order[b.sev];});
+  var hi=list.filter(function(r){return r.sev==='high';}).length,md=list.filter(function(r){return r.sev==='med';}).length,dn=list.filter(function(r){return r.sev==='down';}).length;
+  var h='';
+  if(risksStale)h+='<div class="stale"><span>Документ изменён после проверки — результаты могли устареть.</span><button class="btn sm" style="margin-left:auto" onclick="runRisks()">Перезапустить</button></div>';
+  h+='<div class="rsummary">'+(hi?'<span class="pill dang">'+hi+' высоких</span>':'')+(md?'<span class="pill warn">'+md+' средних</span>':'')+(dn?'<span class="pill ok">'+dn+' снижен</span>':'')+'<span class="pill q">оценка от лица: '+doc.side.replace('а','')+'</span></div>';
+  list.forEach(function(r){var si=sevInfo(r.sev);h+='<div class="risk"><div class="sevbar" style="background:'+si.c+'"></div><div style="flex:1"><div style="display:flex;align-items:center;gap:9px"><div class="rt2">'+r.title+'</div><span class="pill" style="color:'+si.c+';background:'+si.bg+'">'+si.t+'</span></div><div class="rd">'+r.desc+'</div><div class="rf">'+(r.clause?'<span class="clausechip" onclick="jumpTo(\''+r.clause+'\')">К пункту '+r.clause+'</span>':'<span class="clausechip" onclick="toast(\'Предложить формулировку пропущенного пункта\')">Предложить пункт</span>')+'</div></div></div>';});
+  body.innerHTML=h;
+}
+function jumpTo(id){var f=findSub(id);if(!f)return;switchTab('review');pick(id);}
+
+function openNorm(art){var n=NORMS[art]||{text:'Текст нормы будет загружен из правовой базы.',why:'—',conf:'hi'};$('d-art').textContent=art;var cf=n.conf==='md'?'<span class="conf md">уверенность средняя</span>':'<span class="conf hi">уверенность высокая</span>';$('d-body').innerHTML='<div>'+cf+'</div><div class="art">'+n.text+'</div><div class="kv"><b>Почему ИИ привязал к пункту:</b> '+n.why+'</div>'+(n.warn?'<div class="callout warn">Проверьте: '+n.warn+'</div>':'')+'<div class="kv" style="margin-top:14px"><b>Источник:</b> Гражданский кодекс РФ, часть первая.</div>';$('scrim').classList.add('on');$('drawer').classList.add('on');}
+function closeNorm(){$('scrim').classList.remove('on');$('drawer').classList.remove('on');}
+
+var tmr;function toast(m){var t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(tmr);tmr=setTimeout(function(){t.classList.remove('on');},2200);}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeNorm();});
+chooseSrc(document.querySelector('#src-chips .chip'),'mine');
+renderDoc();renderOverview();go('projects');
+</script>
+</body>
+</html>

@@ -4,13 +4,16 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Download } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { api, apiDownload } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import type { ContractDetail, ReviewSummary } from "@/lib/types";
 import { StatusChip } from "@/components/contract-chips";
-import { ClauseReview } from "@/components/review/clause-review";
+import {
+  ClauseReview,
+  type ClauseReviewHandle,
+} from "@/components/review/clause-review";
 import { LogicFindings, RiskFindings } from "@/components/review/findings";
 import {
   ReviewLauncher,
@@ -27,6 +30,19 @@ export default function ContractReviewPage() {
   const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("clauses");
   const [exporting, setExporting] = useState(false);
+  const clauseReview = useRef<ClauseReviewHandle>(null);
+
+  /**
+   * Переход из находки к пункту (R13, docs/SVOD_PROTOTYPE_DELTA.md, раздел
+   * 4.2). Повторяет `jumpTo(id)` прототипа: вкладка «Пункты и нормы» плюс
+   * именно тот пункт, на который указывает риск или расхождение логики.
+   * Разбор не размонтируется при смене вкладки, поэтому ссылка на него
+   * действует и с вкладки рисков.
+   */
+  const goToClause = useCallback((anchor: string) => {
+    setTab("clauses");
+    clauseReview.current?.openAnchor(anchor);
+  }, []);
 
   const contract = useQuery({
     queryKey: ["contract", id],
@@ -123,10 +139,14 @@ export default function ContractReviewPage() {
           исчезала молча, стоило заглянуть в «Логику» или «Журнал».
         */}
         <div className={tab === "clauses" ? "" : "hidden"}>
-          <ClauseReview contractId={id} />
+          <ClauseReview contractId={id} ref={clauseReview} />
         </div>
-        {tab === "logic" && <LogicFindings contractId={id} />}
-        {tab === "risks" && <RiskFindings contractId={id} />}
+        {tab === "logic" && (
+          <LogicFindings contractId={id} onJumpToClause={goToClause} />
+        )}
+        {tab === "risks" && (
+          <RiskFindings contractId={id} onJumpToClause={goToClause} />
+        )}
         {tab === "comments" && <DocumentComments contractId={id} />}
         {tab === "audit" && <AuditTrail contractId={id} />}
       </div>
